@@ -1,0 +1,26 @@
+[Unit]
+Description=Admission Manager
+After=network.target
+
+[Service]
+Type=simple
+User=admission
+Group=admission
+WorkingDirectory=/opt/admission-manager
+Environment=ADMISSIONS_HOST=127.0.0.1
+Environment=ADMISSIONS_PORT=8000
+Environment=ADMISSIONS_HTTPS=1
+Environment=ADMISSIONS_PROXY=1
+Environment=TZ=Asia/Kolkata
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/admission-manager/venv/bin/python app.py
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
