@@ -1,0 +1,11 @@
+data/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.db
+*.db-wal
+*.db-shm
+FIRST_LOGIN.txt
+scan_key.txt
+secret.key
