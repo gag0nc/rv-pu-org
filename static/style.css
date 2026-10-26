@@ -632,3 +632,154 @@ th.sr-col { font-size: 0; padding: 0 12px; }
   .scanbar .btn { width: 100%; justify-content: center; }
   .modal .actions.wrap .btn { flex: 1 1 auto; }
 }
+
+/* ---------- Website leads banner (dashboard) ---------- */
+.webbanner { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; margin: -4px 0 16px; padding: 12px 16px; border: 1px solid #e8d3c8; background: var(--accent-soft); color: var(--accent-ink); border-radius: 12px; font: inherit; cursor: pointer; }
+.webbanner:hover { border-color: var(--accent); }
+.webbanner b { font-weight: 600; margin-right: 4px; }
+.webbanner .wb-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(201,100,66,.18); flex: none; }
+.webbanner .wb-go { margin-left: auto; font-weight: 600; white-space: nowrap; }
+
+/* ---------- Full-width follow-ups (counsellor / viewer dashboard) ---------- */
+.panel.fwide .fstats { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fstat { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 10px; padding: 6px 12px; font: inherit; color: var(--muted); cursor: pointer; }
+.fstat b { font-family: var(--serif); font-size: 20px; font-weight: 450; color: var(--ink); }
+.fstat.late b { color: var(--late); }
+.fstat:hover { background: var(--side); }
+.ftable { width: 100%; border-collapse: collapse; min-width: 560px; }
+.ftable th { text-align: left; font-size: 12.5px; font-weight: 450; color: var(--muted); padding: 0 10px 10px; }
+.ftable td { padding: 11px 10px; border-top: 1px solid var(--line); vertical-align: middle; }
+.ftable tbody tr { cursor: pointer; }
+.ftable tbody tr:hover { background: var(--bg); }
+.ftable .nm { font-weight: 500; }
+.ftable .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ftable td.late { color: var(--late); font-weight: 550; }
+.ftable td.today { color: var(--accent-ink); font-weight: 550; }
+.ftable .tel, .tel { color: var(--ink-2); text-decoration: none; border-bottom: 1px dashed var(--line-strong); font-variant-numeric: tabular-nums; }
+.ftable .tel:hover { color: var(--accent-ink); }
+.fmore { margin-top: 12px; text-align: right; }
+.nw { white-space: nowrap; }
+.muted { color: var(--muted); }
+
+/* ---------- Siblings, telecaller, website lead box (entry form) ---------- */
+.sibblock { display: grid; gap: 10px; }
+.sibnote { display: flex; gap: 9px; align-items: flex-start; background: #fbf4e4; border: 1px solid #f0dfb5; color: #6e4b0f; border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.45; }
+.sibnote svg { flex: none; margin-top: 2px; }
+.sibnote b { font-weight: 600; }
+.sibrows { display: grid; gap: 8px; }
+.sibrow { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 38px; gap: 8px; align-items: center; }
+.sibrow .iconbtn { width: 38px; height: 38px; font-size: 20px; color: var(--muted); }
+.sibblock > .btn { justify-self: start; }
+.callerfw { padding: 12px 14px; border: 1px solid #e8d3c8; background: var(--accent-soft); border-radius: 12px; }
+.callerfw .hint { padding: 6px 0 0; }
+.leadbox { border: 1px solid #e8d3c8; background: var(--accent-soft); border-radius: 14px; padding: 14px 18px; margin-bottom: 14px; color: var(--accent-ink); }
+.leadbox > b { display: block; font-weight: 600; margin-bottom: 8px; }
+.leadbox dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: 13px; }
+.leadbox dt { color: #9b6a55; }
+.leadbox dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.marks-wrap { margin: 0 -2px; }
+@media (max-width: 640px) {
+  .sibrow { grid-template-columns: 1fr 1fr 38px; }
+}
+
+/* ---------- Import / sample dialogs ---------- */
+.impstats { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); }
+.impstats b { color: var(--ink); font-size: 16px; margin-right: 3px; }
+table.plain.small th, table.plain.small td { font-size: 12.5px; padding: 7px 9px; }
+a.btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: inherit; }
+
+/* ---------- Printed Student Enquiry Form (A4, one page) ---------- */
+.pf2 { font-family: Georgia, "Times New Roman", serif; color: #000; font-size: 10.4px; line-height: 1.25; }
+.pf2 .phd { display: grid; grid-template-columns: 62px 1fr 150px; gap: 10px; align-items: center; border-bottom: 2.5px double #172b49; padding-bottom: 6px; }
+.pf2 .phd img { width: 60px; height: auto; }
+.pf2 .pht { text-align: center; }
+.pf2 .pht h1 { font-family: Georgia, serif; font-size: 16.5px; font-weight: 700; color: #172b49; letter-spacing: .4px; margin: 0; }
+.pf2 .pht .sub { font-size: 9px; margin-top: 1px; }
+.pf2 .pno { font-size: 9.5px; display: grid; gap: 5px; }
+.pf2 .pno > div { display: flex; align-items: flex-end; gap: 4px; }
+.pf2 .ln { border-bottom: 1px solid #555; min-height: 15px; flex: 1; padding: 0 3px 1px; font-family: Arial, sans-serif; font-size: 10.5px; }
+.pf2 .ln.sm { display: inline-block; min-width: 80px; }
+.pf2 .ln.short { flex: 0 0 120px; }
+.pf2 .ln.box { border: 1px solid #555; min-height: 34px; padding: 3px 5px; white-space: pre-wrap; }
+.pf2 .ln.box.sm2 { min-height: 22px; }
+.pf2 .pttl { margin: 6px 0 2px; background: #172b49; color: #fff; text-align: center; font: 700 11px Arial, sans-serif; letter-spacing: 2px; padding: 3px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pf2 .psec { margin: 7px 0 3px; font: 700 10.5px Arial, sans-serif; color: #172b49; border-bottom: 1px solid #172b49; padding-bottom: 1px; text-transform: uppercase; letter-spacing: .3px; }
+.pf2 .psec .pn { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: #172b49; color: #fff; font-size: 8.5px; margin-right: 5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pf2 .kv { display: flex; align-items: flex-end; gap: 6px; margin: 3px 0; }
+.pf2 .kv.tall { display: block; }
+.pf2 .kv.tall .k { display: block; margin-bottom: 2px; }
+.pf2 .k { font-weight: 700; white-space: nowrap; font-size: 10px; }
+.pf2 .k.inl { margin-left: 8px; }
+.pf2 .grid2p { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.pf2 .ticks { display: flex; flex-wrap: wrap; gap: 2px 11px; }
+.pf2 .tk { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; }
+.pf2 .bx { display: inline-grid; place-items: center; width: 10px; height: 10px; border: 1px solid #000; font: 700 9px Arial, sans-serif; line-height: 1; }
+.pf2 table.pmarks { width: 100%; border-collapse: collapse; margin: 4px 0 2px; }
+.pf2 table.pmarks th, .pf2 table.pmarks td { border: 1px solid #555; padding: 2px 5px; height: 16px; text-align: left; font-size: 10px; }
+.pf2 table.pmarks td { font-family: Arial, sans-serif; }
+.pf2 table.pmarks td.k { font-family: Georgia, serif; width: 32%; background: #f3f4f7; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pf2 table.pmarks th { background: #e7eaf0; font-size: 9.5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pf2 table.par td.k { width: 22%; }
+.pf2 .psib { margin-top: 5px; border: 1px solid #b49a68; padding: 4px 6px 2px; border-radius: 3px; }
+.pf2 .psibh { font-weight: 700; font-size: 10px; }
+.pf2 .psibn { font-size: 8.8px; font-style: italic; margin: 1px 0 2px; }
+.pf2 .sig { display: flex; justify-content: space-between; gap: 18px; margin-top: 26px; }
+.pf2 .sig div { flex: 1; border-top: 1px solid #000; padding-top: 3px; text-align: center; font-weight: 700; font-size: 9.5px; }
+
+/* KPI cards: 4 across on laptops, 2 x 2 on tablets and phones (no orphan card, less scrolling) */
+.cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .cards { gap: 10px; }
+  .kpi { padding: 14px 14px 15px; }
+  .kpi .kv { flex-wrap: wrap; gap: 2px 6px; margin-top: 8px; }
+  .kpi .kv b { font-size: 30px; }
+  .kpi .kv .delta { width: 100%; margin-left: 0; }
+  .webbanner { flex-wrap: wrap; }
+  .panel.fwide .phead { gap: 10px; }
+}
+@media (max-width: 600px) {
+  .ftable { min-width: 0; display: block; }
+  .ftable thead { display: none; }
+  .ftable tbody { display: block; }
+  .ftable tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "stu fu" "mob st" "co co"; gap: 6px 10px; padding: 12px 2px; border-top: 1px solid var(--line); }
+  .ftable td { border: 0; padding: 0; }
+  .ftable .c-stu { grid-area: stu; } .ftable .c-fu { grid-area: fu; text-align: right; font-size: 12.5px; }
+  .ftable .c-mob { grid-area: mob; } .ftable .c-st { grid-area: st; justify-self: end; }
+  .ftable .c-co { grid-area: co; font-size: 12.5px; color: var(--muted); }
+}
+/* print form: more room to write by hand, still one A4 page */
+.pf2 .kv { margin: 4px 0; }
+.pf2 .ln { min-height: 16px; }
+.pf2 table.pmarks th, .pf2 table.pmarks td { height: 18px; }
+.pf2 .ln.box { min-height: 38px; }
+.pf2 .ln.box.sm2 { min-height: 22px; }
+.pf2 .psec { margin-top: 8px; }
+.pf2 .sig { margin-top: 28px; }
+/* Enquiries on phones: search + Filters button; filters open on demand; status chips in one swipeable row */
+.ftoggle { display: none; }
+@media (max-width: 700px) {
+  .toolbar { gap: 8px; }
+  .toolbar .search { flex: 1 1 auto; min-width: 0; }
+  .ftoggle { display: inline-flex; height: 40px; flex: none; }
+  .ftoggle.on { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+  .toolbar:not(.open) > select, .toolbar:not(.open) > .range, .toolbar:not(.open) > .btn.ghost { display: none; }
+  .toolbar.open > select { flex: 1 1 calc(50% - 8px); min-width: 0; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips .chip { flex: none; }
+}
+@media (max-width: 700px) { .toolbar .search { flex: 1 1 0; width: auto; max-width: none; min-width: 0; } }
+/* Phone: drawer header wraps by word; marks table becomes stacked rows */
+.drawer-head h2 { overflow-wrap: normal; word-break: normal; min-width: 0; }
+@media (max-width: 640px) {
+  .drawer-head { flex-wrap: wrap; row-gap: 4px; }
+  .drawer-head h2 { font-size: 22px; flex: 1 1 100%; }
+  table.marks, table.marks tbody { display: block; width: 100%; }
+  table.marks thead { display: none; }
+  table.marks tr { display: grid; grid-template-columns: 1fr 1fr 64px 1fr; gap: 6px 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+  table.marks td { padding: 0; border: 0; }
+  table.marks td:first-child { grid-column: 1 / -1; font-weight: 550; }
+  table.marks td.pc { text-align: center; }
+}
+@media (max-width: 640px) { table.marks td:first-child { width: auto; } }

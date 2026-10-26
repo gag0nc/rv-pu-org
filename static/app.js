@@ -68,7 +68,13 @@
     }
     if (opts.signal) o.signal = opts.signal;
     if (state.csrf) o.headers['X-CSRF-Token'] = state.csrf;
-    const r = await fetch(path, o);
+    let r;
+    try {
+      r = await fetch(path, o);
+    } catch (netErr) {
+      if (netErr && netErr.name === 'AbortError') throw netErr;
+      throw new Error('Could not reach the server. Check the internet connection and try again.');
+    }
     let data = null;
     try { data = await r.json(); } catch (e) { data = null; }
     if (r.status === 401 && path !== '/api/login') {
@@ -201,7 +207,7 @@
     const panel = h('div', { class: 'modal login-dialog' },
       h('h3', {}, 'Forgot your password?'),
       h('p', {}, 'Please ask your administrator to reset it. They can do this from Users, using Reset password, and will give you a temporary password. You will be asked to choose a new one when you sign in.'),
-      h('p', { class: 'note' }, 'Administrator: if you cannot sign in at all, run reset_admin.py on the computer that hosts this app. The guide explains how.'),
+      h('p', { class: 'note' }, 'Administrator: if you cannot sign in at all, see "Forgot the admin password" in the guide (GUIDE.md).'),
       h('div', { class: 'actions' }, ok));
     const bg = h('div', { class: 'modal-bg', onmousedown: (e) => { if (e.target === bg) close(); } }, panel);
     layerOn(bg, panel, 'Forgot your password?', close);
@@ -394,8 +400,7 @@
       NAV.filter((n) => !n.admin).map(navBtn),
       role() === 'admin' ? [h('hr'), NAV.filter((n) => n.admin).map(navBtn)] : null,
       h('hr'),
-      role() === 'admin' ? h('button', { onclick: () => download('/api/backup').catch(fail) }, icon('db'), 'Download backup') : null,
-      h('button', { onclick: () => printForm({}, '') }, icon('print'), 'Print blank form'),
+      h('button', { onclick: blankFormModal }, icon('print'), 'Print blank form'),
       h('button', { onclick: () => passwordModal(false) }, icon('lock'), 'Change password'),
       h('button', { onclick: logout }, icon('out'), 'Sign out'));
     $topTitle = h('h1', {});
@@ -585,6 +590,66 @@
       frow('Admitted', admitted, s.total, '#788c5d', () => openFiltered({ status: 'Admission Confirmed' })),
       h('div', { class: 'big' }, h('b', {}, pct(admitted, counselled) + '%'), h('span', {}, 'Of Counselled Students Took Admission')));
 
+    const counsellorPanel = can('counsellor_track') ? buildCounsellorPanel(cs) : null;
+    const followPanel = counsellorPanel ? followSmall(s) : followWide(s);
+
+    const hr = new Date().getHours();
+    const first = (state.me.full_name || '').trim().split(/\s+/)[0].toLowerCase();
+    const greet = h('h1', { class: 'greet' }, (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first[0].toUpperCase() + first.slice(1) : ''));
+    const webBanner = s.web_new ? h('button', { class: 'webbanner', onclick: () => openFiltered({ source: 'Website', status: 'New' }) },
+      h('span', { class: 'wb-dot', 'aria-hidden': 'true' }),
+      h('span', {}, h('b', {}, s.web_new + (s.web_new === 1 ? ' new enquiry' : ' new enquiries') + ' from the website'), ' waiting for a first call'),
+      h('span', { class: 'wb-go' }, 'View ›')) : null;
+    $content.replaceChildren(greet, webBanner, cards,
+      h('div', { class: 'panels' }, chartPanel, funnelPanel),
+      h('div', { class: 'panels' }, counsellorPanel, followPanel));
+  }
+
+  function telLink(num) {
+    return num ? h('a', { href: 'tel:+91' + num, class: 'tel', onclick: (e) => e.stopPropagation() }, num) : '';
+  }
+
+  function followSmall(s) {
+    return h('div', { class: 'panel w4' },
+      h('div', { class: 'phead', style: 'margin-bottom:8px' }, h('div', {}, h('h2', {}, 'Follow-ups'), h('div', { class: 'sub' }, 'Overdue and next 7 days')),
+        s.overdue + s.due_today ? h('button', { class: 'linkbtn', onclick: () => openFiltered({ followup: 'due' }) }, `${s.overdue + s.due_today} due ›`) : null),
+      s.follow_ups.length ? s.follow_ups.slice(0, 5).map((f) => {
+        const late = f.follow_up_date < todayStr();
+        return h('div', { class: 'list-row', role: 'button', tabindex: 0, onclick: () => openDrawer(f.id), onkeydown: onActivate(() => openDrawer(f.id)) },
+          h('div', {}, h('div', { class: 'nm' }, f.student_name), h('div', { class: 'meta' }, f.father_mobile || f.mother_mobile || f.enq_no)),
+          h('div', { class: 'right' + (late ? ' late' : '') }, fmtDate(f.follow_up_date)));
+      }) : h('div', { class: 'empty' }, 'Nothing pending'));
+  }
+
+  // Counsellors and viewers do not see the counsellor track; follow-ups take the whole row instead.
+  function followWide(s) {
+    const t = todayStr();
+    const due = s.overdue + s.due_today;
+    const rows = s.follow_ups.slice(0, 12);
+    const whenTxt = (d) => (d < t ? 'Overdue · ' : d === t ? 'Today · ' : '') + fmtDate(d);
+    return h('div', { class: 'panel w12 fwide' },
+      h('div', { class: 'phead' },
+        h('div', {}, h('h2', {}, 'Follow-ups'), h('div', { class: 'sub' }, 'Overdue, today and the next 7 days')),
+        h('div', { class: 'fstats' },
+          h('button', { class: 'fstat late', onclick: () => openFiltered({ followup: 'overdue' }) }, h('b', {}, s.overdue), 'Overdue'),
+          h('button', { class: 'fstat', onclick: () => openFiltered({ followup: 'today' }) }, h('b', {}, s.due_today), 'Today'),
+          h('button', { class: 'linkbtn', onclick: () => openFiltered({ followup: 'week' }) }, 'All upcoming ›'))),
+      rows.length ? h('div', { class: 'tscroll' }, h('table', { class: 'ftable' },
+        h('thead', {}, h('tr', {}, ['Student', 'Mobile', 'Status', 'Counsellor', 'Follow-up'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, rows.map((f) => {
+          const late = f.follow_up_date < t;
+          return h('tr', { tabindex: 0, onclick: () => openDrawer(f.id), onkeydown: onActivate(() => openDrawer(f.id)) },
+            h('td', { class: 'c-stu' }, h('div', { class: 'nm' }, f.student_name), h('div', { class: 'meta nw' }, f.enq_no)),
+            h('td', { class: 'c-mob nw' }, telLink(f.father_mobile || f.mother_mobile)),
+            h('td', { class: 'c-st' }, pill(f.status)),
+            h('td', { class: 'c-co' }, up(f.assigned_to) || h('span', { class: 'muted' }, 'Unassigned')),
+            h('td', { class: 'c-fu nw' + (late ? ' late' : f.follow_up_date === t ? ' today' : '') }, whenTxt(f.follow_up_date)));
+        })))) : h('div', { class: 'empty' }, due ? '' : 'Nothing pending. Well done.'),
+      s.follow_ups.length > rows.length ? h('div', { class: 'fmore' }, h('button', { class: 'linkbtn', onclick: () => openFiltered({ followup: 'week' }) }, 'See all follow-ups ›')) : null);
+  }
+
+  function buildCounsellorPanel(cs) {
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
     const csHost = h('div', { class: 'tscroll' });
     const drawCounsellors = (list) => {
       if (!list.length) { csHost.replaceChildren(h('div', { class: 'empty' }, 'No counsellors yet. Add users with the Counsellor role and assign enquiries to them.')); return; }
@@ -603,25 +668,8 @@
       state.csRange = e.target.value;
       try { const r = await api('/api/stats?range=' + state.csRange); drawCounsellors(r.counsellors); } catch (ex) { fail(ex); }
     } }, [['all', 'All Time'], ['year', 'This Year'], ['month', 'This Month'], ['30d', 'Last 30 Days'], ['7d', 'Last 7 Days']].map(([k, l]) => h('option', { value: k, selected: k === state.csRange }, l)));
-    const counsellorPanel = h('div', { class: 'panel w8' },
+    return h('div', { class: 'panel w8' },
       h('div', { class: 'phead' }, h('div', {}, h('h2', {}, 'Counsellor track'), h('div', { class: 'sub' }, 'Counselled, admitted and conversion')), rangeSel), csHost);
-
-    const followPanel = h('div', { class: 'panel w4' },
-      h('div', { class: 'phead', style: 'margin-bottom:8px' }, h('div', {}, h('h2', {}, 'Follow-ups'), h('div', { class: 'sub' }, 'Overdue and next 7 days')),
-        s.overdue + s.due_today ? h('button', { class: 'linkbtn', onclick: () => openFiltered({ followup: 'due' }) }, `${s.overdue + s.due_today} due ›`) : null),
-      s.follow_ups.length ? s.follow_ups.slice(0, 5).map((f) => {
-        const late = f.follow_up_date < todayStr();
-        return h('div', { class: 'list-row', role: 'button', tabindex: 0, onclick: () => openDrawer(f.id), onkeydown: onActivate(() => openDrawer(f.id)) },
-          h('div', {}, h('div', { class: 'nm' }, f.student_name), h('div', { class: 'meta' }, f.father_mobile || f.mother_mobile || f.enq_no)),
-          h('div', { class: 'right' + (late ? ' late' : '') }, fmtDate(f.follow_up_date)));
-      }) : h('div', { class: 'empty' }, 'Nothing pending'));
-
-    const hr = new Date().getHours();
-    const first = (state.me.full_name || '').trim().split(/\s+/)[0].toLowerCase();
-    const greet = h('h1', { class: 'greet' }, (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (first ? ', ' + first[0].toUpperCase() + first.slice(1) : ''));
-    $content.replaceChildren(greet, cards,
-      h('div', { class: 'panels' }, chartPanel, funnelPanel),
-      h('div', { class: 'panels' }, counsellorPanel, followPanel));
   }
 
   const COLS = [
@@ -635,13 +683,17 @@
     { key: 'father', label: 'Father / Guardian', cell: (r) => r.father_name },
     { key: 'mobile', label: 'Mobile', sort: 'father_mobile', cell: (r) => r.father_mobile || r.mother_mobile },
     { key: 'town', label: 'Town', sort: 'town', cell: (r) => r.town },
-    { key: 'source', label: 'Source', cell: (r) => r.source.join(', ') },
+    { key: 'source', label: 'Source', cell: (r) => sourceText(r) },
     { key: 'status', label: 'Status', sort: 'status' },
     { key: 'follow', label: 'Follow-up', sort: 'follow_up_date' },
     { key: 'assigned_to', label: 'Counsellor', sort: 'assigned_to', cell: (r) => up(r.assigned_to) },
     { key: 'counselled_on', label: 'Counselled', sort: 'counselled_on', cell: (r) => (r.counselled_on ? fmtDate(r.counselled_on) : '—') },
     { key: 'updated_at', label: 'Updated', sort: 'updated_at', cell: (r) => fmtDateTime(r.updated_at) },
   ];
+
+  function sourceText(r) {
+    return (r.source || []).map((s) => (s === 'Telecalling' && r.telecaller ? `Telecalling (by ${up(r.telecaller)})` : s)).join(', ');
+  }
 
   function listQuery(extra) {
     const p = new URLSearchParams();
@@ -668,11 +720,19 @@
     const toolbar = h('div', { class: 'toolbar' }, search,
       sel('stream', 'All streams', state.cfg.streams.map((x) => [x, x])),
       sel('coaching', 'Any coaching', state.cfg.coaching.map((x) => [x, x])),
+      sel('source', 'Any source', state.cfg.sources.map((x) => [x, x])),
       sel('assigned', 'Any counsellor', state.staff.map((x) => [x, up(x)])),
       sel('counselling', 'Counselling', [['done', 'Counselled'], ['pending', 'Not yet counselled']]),
       sel('followup', 'Any follow-up', [['due', 'Due now (overdue + today)'], ['overdue', 'Overdue'], ['today', 'Due today'], ['week', 'Next 7 days']]),
       h('div', { class: 'range' }, dateInp('from', 'Enquiry date from'), h('span', {}, 'To'), dateInp('to', 'Enquiry date to')),
       h('button', { class: 'btn ghost small', onclick: () => openFiltered({}) }, 'Clear'));
+    // Phones: filters fold away behind one button so the list is visible straight away.
+    const active = ['stream', 'coaching', 'source', 'assigned', 'counselling', 'followup', 'from', 'to'].filter((k) => state[k]).length;
+    const ftoggle = h('button', { class: 'btn small ftoggle' + (active ? ' on' : ''), type: 'button', 'aria-expanded': 'false', onclick: () => {
+      const open = toolbar.classList.toggle('open');
+      ftoggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    } }, 'Filters' + (active ? ` (${active})` : ''));
+    toolbar.insertBefore(ftoggle, search.nextSibling);
     const chips = h('div', { class: 'chips', id: 'chips' });
     const wrap = h('div', { class: 'sheet-wrap' });
     const pager = h('div', { class: 'pager' });
@@ -753,7 +813,8 @@
 
   async function renderUsers() {
     $topTitle.textContent = 'Users';
-    $topActions.append(h('button', { class: 'btn', onclick: () => download('/api/backup').catch(fail) }, '⬇ Download database backup'));
+    $topActions.append(h('button', { class: 'btn', onclick: importModal }, icon('download', 15), 'Import from Excel'));
+    $topActions.append(h('button', { class: 'btn', onclick: sampleModal }, 'Sample data'));
     $topActions.append(h('button', { class: 'btn', onclick: scanSettingsModal }, icon('scan', 15), 'Scan settings'));
     $topActions.append(h('button', { class: 'btn primary', onclick: addUserModal }, '+ Add user'));
     const users = await api('/api/users');
@@ -776,7 +837,7 @@
               try { await api('/api/users/' + u.id, { method: 'PUT', body: { active: !u.active } }); go('users'); } catch (ex) { fail(ex); }
             } }, u.active ? 'Disable' : 'Enable'))))))),
       h('div', { class: 'legend' },
-        [['Admin', 'Full Access'], ['Counsellor', 'Add & Edit Enquiries, Change Status'], ['Viewer', 'Read Only, Aadhaar Masked']]
+        [['Admin', 'Full Access, Users, Activity Log, Counsellor Track'], ['Counsellor', 'Add & Edit Enquiries, Change Status, Export'], ['Viewer', 'Sees The Same As A Counsellor, Read Only, Aadhaar Masked']]
           .map(([a, b]) => h('span', {}, h('b', {}, a), ' — ' + b)),
         h('span', {}, 'Users Are Disabled, Never Deleted, So The Activity Log Stays Complete')));
   }
@@ -859,6 +920,17 @@
         if (el.checked) d[el.name] = el.value;
       } else d[el.name] = el.value;
     });
+    return d;
+  }
+
+  // Form values plus the sibling rows (which have no single input name).
+  function collectAll(root) {
+    const d = collect(root);
+    d.siblings = Array.from(root.querySelectorAll('.sibrow')).map((row) => ({
+      name: (row.querySelector('[data-sib=name]').value || '').trim(),
+      class: (row.querySelector('[data-sib=class]').value || '').trim(),
+    })).filter((x) => x.name || x.class);
+    if (!d.source.includes('Telecalling')) d.telecaller = '';
     return d;
   }
 
@@ -967,6 +1039,53 @@
       h('label', { class: 'status-opt o-' + STATUS_CLASS[s] }, h('input', { type: 'radio', name: 'status', value: s, checked: rec.status === s, disabled: lock('status'), onchange: mark }),
         h('span', { class: 'dot', style: 'background:' + STATUS_COLOR[s] }), s)));
 
+    // Siblings currently studying at Sri R.V. School / PU College (name + class rows).
+    const maxSib = state.cfg.max_siblings || 4;
+    const sibRows = h('div', { class: 'sibrows' });
+    const sibAdd = h('button', { type: 'button', class: 'btn small ghost', disabled: !canEdit, onclick: () => { addSib({}); mark(); } }, '+ Add sibling');
+    const sibBlock = h('div', { class: 'sibblock', 'data-flag': 'siblings' },
+      h('div', { class: 'sibnote', role: 'note' }, icon('alert', 15),
+        h('span', {}, h('b', {}, 'Only brothers or sisters studying at Sri R.V. School or Sri R.V. PU College right now. '),
+          'Do not enter siblings studying at other schools or colleges, former students, cousins, relatives or friends.')),
+      sibRows, sibAdd);
+    function addSib(s) {
+      if (sibRows.children.length >= maxSib) return;
+      const n = h('input', { type: 'text', 'data-sib': 'name', value: s.name || '', placeholder: 'Sibling name', maxlength: 100, disabled: !canEdit, 'aria-label': 'Sibling name',
+        oninput: (e) => { const p = e.target.selectionStart; e.target.value = e.target.value.toUpperCase(); e.target.setSelectionRange(p, p); mark(); } });
+      const c = h('input', { type: 'text', 'data-sib': 'class', value: s.class || '', placeholder: 'Class (e.g. 8th, II PUC)', maxlength: 30, disabled: !canEdit, 'aria-label': 'Sibling class', list: 'sib-classes', oninput: mark });
+      const row = h('div', { class: 'sibrow' }, n, c,
+        canEdit ? h('button', { type: 'button', class: 'iconbtn small', 'aria-label': 'Remove sibling', title: 'Remove', onclick: () => { row.remove(); mark(); syncSib(); } }, '×') : null);
+      sibRows.append(row);
+      syncSib();
+    }
+    function syncSib() { sibAdd.hidden = !canEdit || sibRows.children.length >= maxSib; }
+    (rec.siblings || []).forEach(addSib);
+    if (!(rec.siblings || []).length && canEdit) addSib({});
+    if (!canEdit && !(rec.siblings || []).length) sibRows.append(h('div', { class: 'muted' }, 'None entered'));
+    const sibClasses = h('datalist', { id: 'sib-classes' }, ['LKG', 'UKG', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH', 'I PUC', 'II PUC'].map((x) => h('option', { value: x })));
+
+    // Telecalling: who made the call. Shown only while Telecalling is ticked.
+    const callerList = h('datalist', { id: 'tele-callers' }, state.staff.map((n) => h('option', { value: up(n) })));
+    const callerInput = text('telecaller', { upper: true, max: 100, ph: 'Name of the staff member who called', label: 'Telecalling done by' });
+    callerInput.setAttribute('list', 'tele-callers');
+    const callerField = h('div', { class: 'fw callerfw' }, h('label', { class: 'fld', for: 'f-telecaller' }, 'Telecalling done by *'), callerInput,
+      h('div', { class: 'hint' }, 'Printed under “Telecalling” in the Source column of the Excel export.'));
+    callerInput.id = 'f-telecaller';
+    const syncCaller = () => {
+      const on = !!(dr.el || form).querySelector('[name=source][value="Telecalling"]:checked');
+      callerField.hidden = !on;
+    };
+
+    const meta = rec.lead_meta;
+    const CH = { popup: 'Website pop-up form', hero: 'Website home page form', 'enquiry-page': 'Website enquiry page', brochure: 'Brochure request', callback: 'Call-back request', visit: 'Campus visit request', exit: 'Website exit offer', whatsapp: 'WhatsApp button', footer: 'Website footer form' };
+    const leadBox = meta ? h('div', { class: 'leadbox' },
+      h('b', {}, 'Enquiry from the college website'),
+      h('dl', {},
+        [['Form', CH[meta.channel] || 'Website'], ['Sent', fmtDateTime(meta.submitted_at)], ['Page', meta.page], ['Campus visit on', meta.visit_date ? fmtDate(meta.visit_date) : ''],
+          ['Best time to call', meta.preferred_time], ['10th %', meta.m10_percent], ['Campaign', [meta.utm_source, meta.utm_medium, meta.utm_campaign].filter(Boolean).join(' / ')],
+          ['Enquired again', meta.repeat ? `${meta.repeat} more time${meta.repeat > 1 ? 's' : ''} (last ${fmtDateTime(meta.last_repeat)})` : '']]
+          .filter(([, v]) => v).map(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))) : null;
+
     const staffNames = [...state.staff];
     if (rec.assigned_to && !staffNames.includes(rec.assigned_to)) staffNames.push(rec.assigned_to);
     const assignSel = h('select', { name: 'assigned_to', disabled: lock('assigned_to'), onchange: mark },
@@ -983,9 +1102,10 @@
           field('Student name *', text('student_name', { upper: true, max: 100 }), 'span2'),
           field('Previous school name & location', text('prev_school', { upper: true, max: 150 }), 'span2'),
           field('Syllabus', radios('syllabus', state.cfg.syllabi)), field('Other syllabus', syllOther)),
-        h('table', { class: 'marks', style: 'margin-top:14px' },
+        h('div', { class: 'tscroll marks-wrap' }, h('table', { class: 'marks', style: 'margin-top:14px' },
           h('thead', {}, h('tr', {}, ['Academic milestone', 'Marks obtained', 'Total', 'Percentage', 'Grade'].map((x) => h('th', {}, x)))),
           h('tbody', {}, markRow('9th Standard Final', 'm9'), markRow('10th Standard Pre-Board', 'm10pre'), markRow('10th Standard Board Exam', 'm10b')))),
+        h('div', { class: 'fw', style: 'margin-top:16px' }, h('label', { class: 'fld' }, 'Siblings currently studying at Sri R.V. School / PU College (name and class)'), sibBlock, sibClasses)),
       section(3, 'Parents / guardian information',
         h('div', { class: 'grid2' },
           h('div', { class: 'stack' }, h('b', {}, 'Father / Guardian'),
@@ -1007,6 +1127,7 @@
           field('Town / city', text('town', { upper: true, max: 60 }), 'span2'), field('Pincode', text('pincode', { mode: 'numeric', max: 6 })))),
       section(5, 'Source of information',
         h('div', { class: 'stack' }, field('How did you know about us?', checks('source', state.cfg.sources)),
+          callerField, callerList,
           field('Ref / caller', text('ref_caller', { max: 100 })))),
       section(6, 'Parent feedback & admission decision status',
         h('div', { class: 'stack' }, statusOpts, field('Parent feedback / remarks / suggestions', area('parent_feedback', 4)),
@@ -1020,12 +1141,19 @@
       history.length ? h('div', { class: 'section' }, h('h3', {}, 'History'), h('div', { class: 'body history' },
         history.map((x) => h('div', {}, h('span', { class: 'at' }, fmtDateTime(x.at)), h('span', {}, up(x.username)), h('span', {}, up(x.action === 'created' ? 'Created — ' + (x.detail || '') : (x.detail || x.action.replace(/_/g, ' ')))))))) : null);
 
+    form.addEventListener('change', (e) => { if (e.target.name === 'source') syncCaller(); });
+    syncCaller();
+    if (leadBox) form.prepend(leadBox);
+
     const saveBtn = h('button', { class: 'btn primary', disabled: !canEdit, onclick: save }, isNew ? 'Save entry' : 'Save changes');
 
     async function save() {
-      const d = collect(form);
+      const d = collectAll(form);
       if (!d.student_name.trim()) { toast('Student name is required', true); return; }
-      if (!isNew) d._v = rec.updated_at;
+      if (d.source.includes('Telecalling') && !d.telecaller.trim()) { toast('Telecalling is ticked. Enter who made the call.', true); callerInput.focus(); return; }
+      const halfSib = d.siblings.find((x) => !x.name || !x.class);
+      if (halfSib) { toast('Enter both the name and the class for each sibling, or remove the row.', true); return; }
+      if (!isNew) d._v = rec.version != null ? rec.version : rec.updated_at;
       if (isNew && scan) d.via_scan = true;
       saveBtn.disabled = true;
       try {
@@ -1041,7 +1169,7 @@
 
     const foot = h('div', { class: 'drawer-foot' },
       !canEdit ? h('span', { class: 'grow' }, 'Read-only access') : h('span', { class: 'grow' }, rec.updated_at ? `Last updated ${fmtDateTime(rec.updated_at)} by ${up(rec.updated_by)}` : ''),
-      h('button', { class: 'btn', onclick: () => printForm(collect(form), rec.enq_no || '') }, 'Print'),
+      h('button', { class: 'btn', onclick: () => printForm(collectAll(form), rec.enq_no || '') }, 'Print'),
       (!isNew && can('delete')) ? h('button', { class: 'btn danger', onclick: async () => {
         if (!await confirmModal('Delete this enquiry?', `${rec.student_name} (${rec.enq_no}) will be permanently removed. This cannot be undone.`, 'Delete', true)) return;
         try { await api('/api/enquiries/' + rec.id, { method: 'DELETE' }); await closeDrawer(true); toast('Enquiry deleted'); if (state.reloadList && state.view === 'enquiries') state.reloadList(); else go(state.view); } catch (e) { fail(e); }
@@ -1082,8 +1210,9 @@
     };
     Object.entries(scan.flags || {}).forEach(([name, msg]) => {
       if (!/^[a-z0-9_]+$/.test(name)) return;
-      const els = Array.from(form.querySelectorAll(`[name="${name}"]`));
+      const els = name === 'siblings' ? Array.from(form.querySelectorAll('[data-sib]')) : Array.from(form.querySelectorAll(`[name="${name}"]`));
       if (!els.length) return;
+      if (name === 'telecaller') { const cf = els[0].closest('.callerfw'); if (cf) cf.hidden = false; }
       const wrap = els[0].closest('.fw, td');
       const inCell = wrap.tagName === 'TD';
       const id = 'flag-' + name;
@@ -1143,7 +1272,7 @@
     });
   }
 
-  const SCAN_EDGE = 2400;
+  const SCAN_EDGE = 2000;
   function prepareImage(file) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
@@ -1161,8 +1290,9 @@
         ctx.fillRect(0, 0, c.width, c.height);
         ctx.drawImage(img, 0, 0, c.width, c.height);
         const enc = (q) => new Promise((r) => c.toBlob(r, 'image/jpeg', q));
-        enc(0.86).then(async (b) => {
-          if (b && b.size > 4.5 * 1024 * 1024) b = await enc(0.7);
+        enc(0.85).then(async (b) => {
+          if (b && b.size > 3 * 1024 * 1024) b = await enc(0.65);
+          if (b && b.size > 3.8 * 1024 * 1024) b = await enc(0.5);
           if (b) resolve(b); else reject(new Error('encode'));
         });
       };
@@ -1314,55 +1444,141 @@
     keyIn.disabled ? test.focus() : keyIn.focus();
   }
 
-  function printForm(d, enqNo) {
+  // ---------------------------------------------------------------- printing
+  // A4 layout that follows the paper Student Enquiry Form, section by section.
+  // Used for "Print" on an entry and for the blank form (staff hand it to walk-in families).
+  const PRINT_ADDR = 'RV Gardens, NH-75 Bypass, PC Halli, Kolar \u2013 563 101';
+  function printForm(d, enqNo, blank) {
     const v = (x) => (x == null ? '' : String(x));
-    const tick = (list, cur) => list.map((o) => (Array.isArray(cur) ? cur.includes(o) : cur === o) ? '☑ ' + o : '☐ ' + o).join('    ');
     const cfg = state.cfg;
+    const box = (on) => h('span', { class: 'bx' + (on ? ' on' : '') }, on ? '\u2713' : '');
+    const ticks = (list, cur) => h('div', { class: 'ticks' }, list.map((o) => h('span', { class: 'tk' }, box(Array.isArray(cur) ? cur.includes(o) : cur === o), o)));
+    const fill = (val, cls) => h('div', { class: 'ln' + (cls ? ' ' + cls : '') }, blank ? '' : v(val));
     const pc = (p) => {
+      if (blank) return '';
       const o = parseFloat(d[p + '_obt']), t = parseFloat(d[p + '_tot']);
       return (o >= 0 && t > 0) ? (o / t * 100).toFixed(1) + '%' : v(d[p + '_grade']);
     };
-    const row = (cells) => h('tr', {}, cells.map((c) => (c.k ? h('td', { class: 'k' }, c.k) : h('td', { colspan: c.span || 1 }, c.v == null ? '' : c.v))));
-    const sec = (t) => h('tr', {}, h('th', { class: 'sec', colspan: 4 }, t));
-    const kv = (k, val, span) => [{ k }, { v: val, span: span || 3 }];
-    const marks = (label, p) => row([{ k: label }, { v: [v(d[p + '_obt']), d[p + '_tot'] ? ' / ' + d[p + '_tot'] : ''].join('') }, { v: pc(p), span: 2 }]);
-    const pf = h('div', { class: 'pf' },
-      h('div', { class: 'hd' }, h('h1', {}, cfg.print_title),
-        h('div', { class: 'sub' }, '(Approved by Department of Pre-University Education, Govt. of Karnataka)'),
-        h('div', { class: 'ttl' }, 'STUDENT ENQUIRY FORM')),
-      h('table', {}, h('tbody', {}, row([...kv('Enquiry Form No.', enqNo, 1), { k: 'Date' }, { v: fmtDate(d.enq_date) }]))),
-      h('table', {}, h('tbody', {},
-        sec('1. Course Selection'),
-        row(kv('Science combinations', tick(cfg.streams, d.stream))),
-        row(kv('Competitive coaching', tick(cfg.coaching, d.coaching))),
-        sec('2. Student Information (as per 10th marks card)'),
-        row(kv('Student name', v(d.student_name))), row(kv('Previous school & location', v(d.prev_school))),
-        row(kv('Syllabus', tick(cfg.syllabi, d.syllabus) + (d.syllabus === 'Others' ? ' — ' + v(d.syllabus_other) : ''))),
-        row([{ k: 'Academic milestone' }, { k: 'Marks obtained / total' }, { k: 'Percentage / grade', span: 2 }]),
-        marks('9th Standard Final', 'm9'), marks('10th Standard Pre-Board', 'm10pre'), marks('10th Standard Board Exam', 'm10b'))),
-      h('table', {}, h('tbody', {},
-        sec('3. Parents / Guardian Information'),
-        row([{ k: 'Details' }, { k: 'Father / Guardian' }, { k: 'Mother', span: 2 }]),
-        row([{ k: 'Name' }, { v: v(d.father_name) }, { v: v(d.mother_name), span: 2 }]),
-        row([{ k: 'Occupation' }, { v: v(d.father_occ) }, { v: v(d.mother_occ), span: 2 }]),
-        row([{ k: 'Email ID' }, { v: v(d.father_email) }, { v: v(d.mother_email), span: 2 }]),
-        row([{ k: 'Mobile number' }, { v: v(d.father_mobile) }, { v: v(d.mother_mobile), span: 2 }]),
-        sec('4. Statutory Details & Residential Address'),
-        row([{ k: 'Caste' }, { v: v(d.caste) }, { k: 'Category' }, { v: v(d.category) }]),
-        row(kv('Student Aadhaar no.', v(d.aadhaar))), row(kv('House no / street / area', v(d.address))),
-        row([{ k: 'Town / city' }, { v: v(d.town) }, { k: 'Pincode' }, { v: v(d.pincode) }]),
-        sec('5. Source of Information'),
-        row(kv('How did you know about us?', tick(cfg.sources, d.source))), row(kv('Ref / caller', v(d.ref_caller))),
-        sec('6. Parent Feedback & Admission Decision Status'),
-        row(kv('Decision status', tick(cfg.statuses.slice(1), d.status))),
-        row(kv('Parent feedback / remarks', h('div', { style: 'min-height:42px' }, v(d.parent_feedback)))),
-        sec('7. Office Use Only'),
-        row(kv('Counsellor remarks', h('div', { style: 'min-height:32px' }, v(d.counsellor_remarks)))),
-        row(kv('Management remark', h('div', { style: 'min-height:32px' }, v(d.principal_remarks)))))),
-      h('div', { class: 'sig' }, h('div', {}, 'Candidate / Parent Signature'), h('div', {}, 'Counsellor Signature')));
+    const sec = (n, t) => h('div', { class: 'psec' }, h('span', { class: 'pn' }, n), t);
+    const kv = (k, val, cls) => h('div', { class: 'kv' + (cls ? ' ' + cls : '') }, h('span', { class: 'k' }, k), fill(val));
+    const markRow = (label, p) => h('tr', {}, h('td', { class: 'k' }, label),
+      h('td', {}, blank ? '' : [v(d[p + '_obt']), d[p + '_tot'] ? ' / ' + d[p + '_tot'] : ''].join('')), h('td', {}, pc(p)));
+    const sibs = blank ? [] : (d.siblings || []);
+    const sibRows = Array.from({ length: Math.max(3, sibs.length) }, (_, i) => sibs[i] || {});
+    const srcList = cfg.paper_sources.concat((d.source || []).filter((s) => !cfg.paper_sources.includes(s)));
+    const pf = h('div', { class: 'pf2' },
+      h('div', { class: 'phd' },
+        h('img', { src: '/static/logo-navy.png', alt: '' }),
+        h('div', { class: 'pht' },
+          h('h1', {}, cfg.print_title),
+          h('div', { class: 'sub' }, '(Approved by the Department of Pre-University Education, Govt. of Karnataka)'),
+          h('div', { class: 'sub' }, PRINT_ADDR)),
+        h('div', { class: 'pno' }, h('div', {}, 'Form No.', h('span', { class: 'ln sm' }, blank ? '' : v(enqNo))), h('div', {}, 'Date', h('span', { class: 'ln sm' }, blank ? '' : fmtDate(d.enq_date))))),
+      h('div', { class: 'pttl' }, 'STUDENT ENQUIRY FORM'),
+      sec(1, 'Course Selection'),
+      h('div', { class: 'grid2p' }, h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Science combination'), ticks(cfg.streams, blank ? '' : d.stream)),
+        h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Competitive coaching'), ticks(cfg.coaching, blank ? [] : d.coaching))),
+      sec(2, 'Student Information (as per 10th marks card, in CAPITAL LETTERS)'),
+      kv('Student name', d.student_name),
+      kv('Previous school name & location', d.prev_school),
+      h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Syllabus'), ticks(cfg.syllabi, blank ? '' : d.syllabus), h('span', { class: 'k inl' }, 'If others:'), fill(d.syllabus === 'Others' ? d.syllabus_other : '', 'short')),
+      h('table', { class: 'pmarks' }, h('thead', {}, h('tr', {}, h('th', {}, 'Academic milestone'), h('th', {}, 'Marks obtained / Total'), h('th', {}, 'Percentage / Grade'))),
+        h('tbody', {}, markRow('9th Standard Final', 'm9'), markRow('10th Standard Pre-Board', 'm10pre'), markRow('10th Standard Board Exam', 'm10b'))),
+      h('div', { class: 'psib' },
+        h('div', { class: 'psibh' }, 'Sibling(s) currently studying at Sri R.V. School / Sri R.V. PU College'),
+        h('div', { class: 'psibn' }, 'Write ONLY brothers or sisters studying at Sri R.V. School or Sri R.V. PU College now. Do NOT write siblings at other schools or colleges, cousins, relatives or friends. Write NIL if none.'),
+        h('table', { class: 'pmarks' }, h('thead', {}, h('tr', {}, h('th', { style: 'width:8%' }, 'No.'), h('th', {}, 'Sibling name'), h('th', { style: 'width:30%' }, 'Class'))),
+          h('tbody', {}, sibRows.map((s, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, v(s.name)), h('td', {}, v(s.class))))))),
+      sec(3, 'Parents / Guardian Information'),
+      h('table', { class: 'pmarks par' }, h('thead', {}, h('tr', {}, h('th', { style: 'width:22%' }, 'Details'), h('th', { style: 'width:39%' }, 'Father / Guardian'), h('th', { style: 'width:39%' }, 'Mother'))),
+        h('tbody', {}, [['Name', 'name'], ['Occupation', 'occ'], ['Email ID', 'email'], ['Mobile number', 'mobile']].map(([k, f]) =>
+          h('tr', {}, h('td', { class: 'k' }, k), h('td', {}, blank ? '' : v(d['father_' + f])), h('td', {}, blank ? '' : v(d['mother_' + f])))))),
+      sec(4, 'Statutory Details & Residential Address'),
+      h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Category'), ticks(cfg.categories, blank ? '' : d.category)),
+      h('div', { class: 'grid2p' }, kv('Caste', d.caste), kv('Student Aadhaar no.', d.aadhaar)),
+      kv('House no / Street / Area', d.address),
+      h('div', { class: 'grid2p' }, kv('Town / City', d.town), kv('Pincode', d.pincode)),
+      sec(5, 'Source of Information'),
+      h('div', { class: 'kv' }, h('span', { class: 'k' }, 'How did you know about us?'), ticks(srcList, blank ? [] : d.source)),
+      h('div', { class: 'grid2p' }, kv('Telecalling \u2013 called by', (d.source || []).includes('Telecalling') ? d.telecaller : ''), kv('Ref / Caller', d.ref_caller)),
+      sec(6, 'Parent Feedback & Admission Decision Status'),
+      h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Decision status'), ticks(cfg.statuses.slice(1), blank ? '' : d.status)),
+      h('div', { class: 'kv tall' }, h('span', { class: 'k' }, 'Parent feedback / remarks / suggestions'), h('div', { class: 'ln box' }, blank ? '' : v(d.parent_feedback))),
+      sec(7, 'Office Use Only'),
+      h('div', { class: 'grid2p' }, kv('Counselled by', blank ? '' : up(d.assigned_to)), kv('Counselling date', blank ? '' : fmtDate(d.counselled_on))),
+      h('div', { class: 'kv tall' }, h('span', { class: 'k' }, 'Counsellor remarks & feedback notes'), h('div', { class: 'ln box' }, blank ? '' : v(d.counsellor_remarks))),
+      h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Management remark'), h('div', { class: 'ln box sm2' }, blank ? '' : v(d.principal_remarks))),
+      h('div', { class: 'sig' }, h('div', {}, 'Signature of Parent / Guardian'), h('div', {}, 'Signature of Student'), h('div', {}, 'Signature of Counsellor')));
     const area = document.getElementById('printArea');
     area.replaceChildren(pf);
-    window.print();
+    const imgs = Array.from(pf.querySelectorAll('img'));
+    Promise.all(imgs.map((im) => (im.complete ? 1 : new Promise((r) => { im.onload = im.onerror = r; })))).then(() => window.print());
+  }
+
+  function blankFormModal() {
+    const close = () => layerOff(bg);
+    const pr = h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); printForm({}, '', true); } }, icon('print', 15), 'Print');
+    const dl = h('a', { class: 'btn', href: '/static/student-enquiry-form.pdf', download: 'Sri-RV-Student-Enquiry-Form.pdf' }, icon('download', 15), 'Download PDF');
+    const panel = h('div', { class: 'modal' },
+      h('h3', {}, 'Blank Student Enquiry Form'),
+      h('p', {}, 'A4, one page, with every section of the enquiry form including siblings at Sri R.V. and Telecalling. Families can fill it in by hand and you can scan it later.'),
+      h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Close'), dl, pr));
+    const bg = h('div', { class: 'modal-bg', onmousedown: (e) => { if (e.target === bg) close(); } }, panel);
+    layerOn(bg, panel, 'Blank Student Enquiry Form', close);
+    pr.focus();
+  }
+
+  function importModal() {
+    const close = () => layerOff(bg);
+    const err = h('div', { class: 'error-box', hidden: true, role: 'alert' });
+    const body = h('div', { class: 'stack' }, h('p', {}, 'Bring in entries from your existing Excel sheets (for example the Walk-In Enquiry List). Every sheet with a student-name column is read. Entries already in the system (same student and mobile) are skipped, so it is safe to import the same file twice.'), err);
+    let file = null;
+    const pickBtn = h('button', { class: 'btn primary', type: 'button', onclick: () => input.click() }, 'Choose Excel file\u2026');
+    const input = h('input', { type: 'file', accept: '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', hidden: true, onchange: async () => {
+      file = input.files[0]; if (!file) return;
+      err.hidden = true; pickBtn.disabled = true; pickBtn.textContent = 'Reading\u2026';
+      try {
+        const p = await api('/api/import', { method: 'POST', blob: file });
+        const go = h('button', { class: 'btn primary', type: 'button', disabled: !p.new, onclick: async () => {
+          go.disabled = true; go.textContent = 'Importing\u2026';
+          try { const r = await api('/api/import?commit=1', { method: 'POST', blob: file }); close(); toast(`${r.added} entries imported`); openFiltered({}); } catch (e) { err.textContent = e.message; err.hidden = false; go.disabled = false; go.textContent = 'Import'; }
+        } }, p.new ? `Import ${p.new} ${p.new === 1 ? 'entry' : 'entries'}` : 'Nothing new to import');
+        body.replaceChildren(err,
+          h('p', {}, h('b', {}, file.name), ` \u2014 sheets read: ${p.sheets.join(', ')}.`),
+          h('div', { class: 'impstats' }, h('span', {}, h('b', {}, p.found), ' rows found'), h('span', {}, h('b', {}, p.new), ' new'), h('span', {}, h('b', {}, p.duplicates), ' already here / repeated'), p.no_mobile ? h('span', {}, h('b', {}, p.no_mobile), ' without a valid mobile') : null),
+          p.rows.length ? h('div', { class: 'tscroll', style: 'max-height:280px' }, h('table', { class: 'plain small' },
+            h('thead', {}, h('tr', {}, ['Sheet', 'Student', 'Date', 'Stream', 'Mobile', 'Status', 'Source', 'Counsellor', 'Notes'].map((x) => h('th', {}, x)))),
+            h('tbody', {}, p.rows.map((r) => h('tr', {}, h('td', {}, r.sheet + ' #' + r.row), h('td', {}, r.student_name), h('td', { class: 'nw' }, fmtDate(r.enq_date)),
+              h('td', {}, [r.stream, r.coaching.join('/')].filter(Boolean).join(' ')), h('td', {}, r.mobile || '\u2014'), h('td', {}, r.status), h('td', {}, r.source.join(', ')), h('td', {}, r.assigned_to), h('td', { class: 'muted' }, r.notes.join('; '))))))) : null);
+        actions.replaceChildren(h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'), go);
+      } catch (e) { err.textContent = e.message; err.hidden = false; pickBtn.disabled = false; pickBtn.textContent = 'Choose Excel file\u2026'; }
+    } });
+    const actions = h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'), pickBtn);
+    const panel = h('div', { class: 'modal wide' }, h('h3', {}, 'Import from Excel'), body, input, actions);
+    const bg = h('div', { class: 'modal-bg' }, panel);
+    layerOn(bg, panel, 'Import from Excel', close);
+    pickBtn.focus();
+  }
+
+  async function sampleModal() {
+    let st;
+    try { st = await api('/api/sample'); } catch (e) { fail(e); return; }
+    const close = () => layerOff(bg);
+    const has = st.count > 0;
+    const act = h('button', { class: 'btn ' + (has ? 'danger' : 'primary'), type: 'button', onclick: async () => {
+      act.disabled = true;
+      try {
+        const r = await api('/api/sample', { method: has ? 'DELETE' : 'POST', body: {} });
+        close(); toast(has ? 'Sample entries removed' : `${r.count} sample entries added`); go('dashboard');
+      } catch (e) { fail(e); act.disabled = false; }
+    } }, has ? `Remove ${st.count} sample entries` : 'Load 48 sample entries');
+    const panel = h('div', { class: 'modal' }, h('h3', {}, 'Sample data'),
+      h('p', {}, has ? `${st.count} made-up sample entries are loaded so the dashboard can be shown. Remove them before you start entering real enquiries. Real entries are not touched.`
+        : 'Load 48 made-up enquiries (names, marks, statuses, follow-ups, website leads) to try the dashboard and train staff. They can be removed in one click later; real entries are never touched.'),
+      h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Close'), act));
+    const bg = h('div', { class: 'modal-bg' }, panel);
+    layerOn(bg, panel, 'Sample data', close);
+    act.focus();
   }
 
   document.addEventListener('click', () => document.querySelectorAll('.umenu').forEach((m) => { m.hidden = true; }));
