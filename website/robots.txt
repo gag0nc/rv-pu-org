@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /_qa
+
+Sitemap: https://srirvpucollege.com/sitemap.xml
