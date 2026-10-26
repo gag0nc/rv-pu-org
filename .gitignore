@@ -1,5 +1,6 @@
 data/
 venv/
+.venv/
 __pycache__/
 *.pyc
 .DS_Store
@@ -9,3 +10,7 @@ __pycache__/
 FIRST_LOGIN.txt
 scan_key.txt
 secret.key
+.vercel/
+.env*
+static/_qa.html
+website/_qa.html

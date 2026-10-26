@@ -138,9 +138,9 @@ Go to **Users → Add user**. Give each person their own login, and tell them th
 
 | Role | Can do |
 |---|---|
-| Admin | Everything, including users, delete, backups, the Activity log and the management remark |
-| Counsellor | Add and edit enquiries, change status, export (without Aadhaar numbers) |
-| Viewer | Read only, Aadhaar masked |
+| Admin | Everything: users, delete, Excel import, sample data, scan settings, the Activity log, the Counsellor track and the management remark |
+| Counsellor | Add and edit enquiries, change status, export (without Aadhaar numbers). Does not see Users, Activity log or the Counsellor track; on the dashboard the Follow-ups list fills the whole bottom row |
+| Viewer | Sees the same screens as a counsellor, read only, Aadhaar masked, no export |
 
 - When someone leaves, click **Disable** instead of deleting them. The history stays complete.
 - A forgotten password: **Reset password** gives a new temporary one.
@@ -154,7 +154,7 @@ Scanning uses Claude, an AI service from Anthropic, to read the photo. It is opt
 
 1. Create an account at **console.anthropic.com**, add credit under Billing, and create a key under **API keys**. Copy the whole key, which starts with `sk-ant-`.
 2. In the app, open **Users** and click **Scan settings**. Paste the key and click **Save key**. The app checks the key with Anthropic before keeping it. **Test connection** repeats the check at any time. **Remove key** turns scanning off.
-3. The key is saved on the server in `data/scan_key.txt`. It is never shown again (only its last four characters), and it is left out of downloaded backups. Anyone who can copy your `data` folder can read it, so keep that folder private. If you prefer, set the `ANTHROPIC_API_KEY` environment variable on the server instead; it then takes priority and cannot be removed from the screen.
+3. The key is saved in the app's database. It is never shown again (only its last four characters). Anyone with access to the database can read it, so keep it private. If you prefer, set the `ANTHROPIC_API_KEY` environment variable on the server instead; it then takes priority and cannot be removed from the screen.
 
 Things to know before you switch it on:
 - **Internet:** the computer that runs the app must be able to reach `api.anthropic.com`. On a school PC with no internet, scanning stays unavailable and manual entry is unaffected.
@@ -166,7 +166,8 @@ Things to know before you switch it on:
 ## 8. Backups
 
 - The app copies the database every day into `data\backups\` and keeps the last 30.
-- Administrators can also click **Download backup** in the sidebar at any time.
+- The **Download backup** button was removed from the website at the college's request. Use **Export to Excel** (admin) for a copy of every enquiry at any time.
+- In the hosted version (Vercel + Neon Postgres, see section 12) the database provider keeps its own restore history; the folder steps below apply only when the app runs on a school PC.
 - **Once a week, copy the `data` folder to a pen drive or another PC.** A backup on the same computer does not protect you if that computer fails.
 - **To restore:** stop the app, copy a backup file to `data\admissions.db` (replacing it), delete `admissions.db-wal` and `admissions.db-shm` from the same folder if they exist, then start the app again.
 - **To move to another PC:** stop the app, install Python on the new PC, unzip a fresh copy as in section 2, copy the old `data` folder into it (replacing the new one), and run `start.bat`. Do not copy the old `venv` folder.
@@ -198,7 +199,8 @@ Restart the app after any change to `app.py`.
 | "Nothing filled in could be read" or "does not look like the Student Enquiry Form" | Photograph the whole page again: flat, bright and straight, with the edges in view. |
 | "Too many scans in a short time" | Wait a few minutes. The limit is 25 scans per person in 10 minutes. |
 | You are signed out unexpectedly | Without Remember me you are signed out after 8 hours of no use, or when the browser closes. A password change or reset signs you out on other devices too. |
-| Forgot the admin password | Open a command window in the app folder and run `python reset_admin.py` (or `venv\Scripts\python reset_admin.py`). It prints a new temporary password for `admin`. Add a username after it, such as `python reset_admin.py meera`, to reset someone else. Your data is not touched. |
+| Forgot the admin password (hosted version) | In Vercel → project **rv-admission-portal** → Settings → Environment Variables, add `ADMIN_RESET_PASSWORD` with a new temporary password (8+ characters) and redeploy. Sign in as `admin` with it, choose a new password, then delete the variable. |
+| Forgot the admin password (school PC) | Open a command window in the app folder and run `python reset_admin.py` (or `venv\Scripts\python reset_admin.py`). It prints a new temporary password for `admin`. Add a username after it, such as `python reset_admin.py meera`, to reset someone else. Your data is not touched. |
 | "Record was changed by someone else" | Two people edited the same enquiry. Close it, reopen it to see the latest version, then re-enter your change. |
 | Excel will not download | Allow downloads from this address in the browser. |
 | Sign-in works but sends you straight back to the sign-in page | `ADMISSIONS_HTTPS=1` is set but the page was opened with plain `http://`. Open the `https://` address, or remove that setting if you only use the school network. |
@@ -285,7 +287,7 @@ Do all of these before telling staff.
 
 - **Replace the `admin` login.** Under Users, add your own admin account with a name that is hard to guess, sign in with it, then **Disable** the `admin` account. Internet bots try `admin` all day, and five wrong tries lock an account for ten minutes.
 - **One login per person,** with the lowest role that fits (section 7). Disable the login when someone leaves.
-- **Back up away from the server.** Turn on the provider's automatic server backup. Also click **Download backup** once a week and keep the file on a pen drive or in your cloud drive. The daily copies the app makes sit on the same server, so they do not help if the server is lost.
+- **Back up away from the server.** Turn on the provider's automatic server backup. Also copy the `data` folder (or use Export to Excel) once a week and keep it on a pen drive or in your cloud drive. The daily copies the app makes sit on the same server, so they do not help if the server is lost.
 - **Watch it.** Add a free uptime monitor such as UptimeRobot that checks `https://admissions.yourschool.in/healthz` every few minutes and emails you when the app is down. A healthy app answers `{"ok":true}`.
 - **Update the server monthly.** Connect with `ssh`, run `apt update && apt -y upgrade`, and run `reboot` if it asks. The app and Caddy start again by themselves.
 - **Keep port 8000 closed.** The firewall above blocks it and the service only listens on the server itself, so everything goes through the secure address.
@@ -352,3 +354,37 @@ Free app hosts such as Render's free plan erase local files whenever the service
 Scanning needs the server to reach the internet. If your firewall blocks outgoing traffic, allow `api.anthropic.com` on port 443.
 
 Set `ADMISSIONS_PROXY=1` only when the app really is behind Caddy or a tunnel. On a plain school network leave it unset.
+
+
+## 12. Hosted version: website + portal (no server to run)
+
+The college does not need its own server. Two free projects run online and share one database:
+
+| Part | Address now | Address after the domain is bought | What it is |
+|---|---|---|---|
+| Website | https://srirvpucollege.vercel.app | srirvpucollege.com | Public college website (folder `website/`) |
+| Admission portal | https://rv-admission-portal.vercel.app | admissionportal.srirvpucollege.com | This app (Flask) |
+| Database | Neon Postgres, Singapore | same | All enquiries, users and settings |
+
+**How the two are linked.** Every form on the website (home page, the bottom-left pop-up, the online enquiry page, call-back, campus visit, exit offer) sends the enquiry to the portal at `/api/public/enquiry`. It appears straight away as a **New** enquiry with source **Website**, a follow-up date of today, and a box on the form showing which website form it came from. The dashboard shows a banner with the number of website enquiries waiting for a first call. If the same student and mobile enquire again, no duplicate is created; the entry notes it.
+
+**Same code, two ways to store data.** If the setting `DATABASE_URL` is present the app uses Postgres; if not, it uses the SQLite file in `data/` exactly as before. The college can move between them at any time (export/import or a database copy), so nothing is locked in.
+
+**Settings used online (Vercel → rv-admission-portal → Settings → Environment Variables)**
+- `DATABASE_URL`: added automatically by the Neon integration.
+- `ADMIN_INITIAL_PASSWORD`: password of the very first `admin` account (only used when the database has no users).
+- `PUBLIC_ORIGINS`: website addresses allowed to send enquiries, comma separated. Add `https://srirvpucollege.com,https://www.srirvpucollege.com` (already included).
+- `ANTHROPIC_API_KEY` (optional): scanning key, instead of entering it in Scan settings.
+- `ADMIN_RESET_PASSWORD` (emergency only): see section 10.
+
+**Connecting the domain (once `srirvpucollege.com` is bought)**
+1. In Vercel → project **srirvpucollege** → Settings → Domains, add `srirvpucollege.com` and `www.srirvpucollege.com`.
+2. In Vercel → project **rv-admission-portal** → Settings → Domains, add `admissionportal.srirvpucollege.com`.
+3. At the domain seller, add the DNS records Vercel shows (an A record for the main domain and CNAME records for `www` and `admissionportal`).
+4. In `website/assets/config.js`, set `staffPortal` to `https://admissionportal.srirvpucollege.com` and `portal` to the same address, then redeploy the website.
+
+**Before going live**
+- Users → **Sample data** → remove the 48 made-up entries.
+- Users → **Import from Excel** → import the existing Walk-In Enquiry List (duplicates across the PCMB/PCMC sheets are skipped automatically).
+- Check every item marked `CONFIRM` in `website/assets/config.js` (phones, WhatsApp number, office hours, rating) and replace the placeholder photos (see `website/CREDITS.md`).
+- Vercel's free Hobby plan is for non-commercial use. For the college, move both projects to a Vercel account owned by the college (Pro plan) and make the GitHub repository private.

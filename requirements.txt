@@ -1,3 +1,5 @@
 Flask>=3.0,<4
 openpyxl>=3.1,<4
 waitress>=3.0,<4
+pg8000>=1.31,<2
+scramp>=1.4.5,<1.5

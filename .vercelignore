@@ -1,0 +1,10 @@
+data
+website
+docs
+deploy
+*.md
+start.bat
+start.sh
+start-background.vbs
+reset_admin.py
+static/_qa.html
