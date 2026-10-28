@@ -13,9 +13,8 @@
   window.RV = {
     /* Admission portal that receives every enquiry form on this site.
        On a local computer the portal is expected at http://127.0.0.1:8000. */
-    portal: local ? 'http://127.0.0.1:8000' : 'https://rv-admission-portal.vercel.app',
-    /* Change to https://admissionportal.srirvpucollege.com once that address is connected. */
-    staffPortal: 'https://rv-admission-portal.vercel.app',
+    portal: local ? 'http://127.0.0.1:8000' : 'https://admissionportal.srirvpucollege.com',
+    staffPortal: 'https://admissionportal.srirvpucollege.com',
 
     name: 'Sri R.V. PU College',
     legalName: 'Sri R.V. Pre-University College',

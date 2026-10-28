@@ -98,9 +98,10 @@
     });
     var sibs = [];
     form.querySelectorAll('.sib-row').forEach(function (row) {
-      var n = row.querySelector('[name="sib_name"]'), c = row.querySelector('[name="sib_class"]');
+      var n = row.querySelector('[name="sib_name"]'), c = row.querySelector('[name="sib_class"]'), sc = row.querySelector('[name="sib_school"]');
       var nv = n ? n.value.trim() : '', cv = c ? c.value.trim() : '';
-      if (nv || cv) sibs.push({ name: nv, class: cv });
+      var sv = sc ? sc.value.trim() : '';
+      if (nv || cv || sv) sibs.push({ name: nv, class: cv, school: sv });
     });
     if (sibs.length) data.siblings = sibs;
     return data;
@@ -123,8 +124,8 @@
     if (visit && visit.required && !data.visit_date) { setErr(visit, 'Please choose a date for your visit.'); ok = false; first = first || visit; } else if (visit) setErr(visit, '');
     var sibErr = '';
     form.querySelectorAll('.sib-row').forEach(function (row) {
-      var n = row.querySelector('[name="sib_name"]').value.trim(), c = row.querySelector('[name="sib_class"]').value.trim();
-      if ((n && !c) || (!n && c)) sibErr = 'Enter both the name and the class of each sibling, or clear the row.';
+      var n = row.querySelector('[name="sib_name"]').value.trim(), c = row.querySelector('[name="sib_class"]').value.trim(), sc = row.querySelector('[name="sib_school"]').value.trim();
+      if ((n || c || sc) && (!n || !c)) sibErr = 'Enter the name and class of each brother or sister, or clear the row.';
     });
     var sbox = form.querySelector('.siblings-box .field-err');
     if (sbox) sbox.textContent = sibErr;
@@ -231,6 +232,7 @@
       r.className = 'sib-row';
       r.innerHTML = '<div><label for="sibn' + n + '">Sibling\'s name</label><input type="text" id="sibn' + n + '" name="sib_name" autocomplete="off" maxlength="100"></div>' +
         '<div><label for="sibc' + n + '">Class</label><input type="text" id="sibc' + n + '" name="sib_class" autocomplete="off" maxlength="30" placeholder="e.g. 8th"></div>' +
+        '<div class="sib-school"><label for="sibs' + n + '">School</label><input type="text" id="sibs' + n + '" name="sib_school" autocomplete="off" maxlength="120" placeholder="Any school"></div>' +
         '<button type="button" class="icon-btn" aria-label="Remove this sibling">×</button>';
       r.querySelector('button').addEventListener('click', function () {
         r.remove();
