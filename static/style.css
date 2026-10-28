@@ -487,9 +487,9 @@ table.plain { width: 100%; border-collapse: separate; border-spacing: 0; backgro
 
 #printArea { display: none; }
 @media print {
-  body { background: #fff; }
-  #app, #toasts { display: none !important; }
-  #printArea { display: block; }
+  html, body { background: #fff !important; }
+  body > *:not(#printArea) { display: none !important; }
+  #printArea { display: block !important; }
   @page { size: A4; margin: 12mm; }
 }
 .pf { font-family: Georgia, "Times New Roman", serif; color: #000; font-size: 11px; }
@@ -667,7 +667,7 @@ th.sr-col { font-size: 0; padding: 0 12px; }
 .sibnote svg { flex: none; margin-top: 2px; }
 .sibnote b { font-weight: 600; }
 .sibrows { display: grid; gap: 8px; }
-.sibrow { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 38px; gap: 8px; align-items: center; }
+.sibrow { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, .7fr) minmax(0, 1.4fr) 38px; gap: 8px; align-items: center; }
 .sibrow .iconbtn { width: 38px; height: 38px; font-size: 20px; color: var(--muted); }
 .sibblock > .btn { justify-self: start; }
 .callerfw { padding: 12px 14px; border: 1px solid #e8d3c8; background: var(--accent-soft); border-radius: 12px; }
@@ -680,6 +680,8 @@ th.sr-col { font-size: 0; padding: 0 12px; }
 .marks-wrap { margin: 0 -2px; }
 @media (max-width: 640px) {
   .sibrow { grid-template-columns: 1fr 1fr 38px; }
+  .sibrow [data-sib=school] { grid-column: 1 / 3; }
+  .sibrow .iconbtn { grid-row: 1; grid-column: 3; }
 }
 
 /* ---------- Import / sample dialogs ---------- */
@@ -783,3 +785,13 @@ a.btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: no
   table.marks td.pc { text-align: center; }
 }
 @media (max-width: 640px) { table.marks td:first-child { width: auto; } }
+
+.feetotal { height: 38px; display: flex; align-items: center; font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums; }
+.pf2 .pht .sub.code { font-weight: 700; font-size: 10px; }
+.pf2 .ppage2 { break-before: page; page-break-before: always; padding-top: 4px; }
+.pf2 .p2head { display: flex; flex-wrap: wrap; gap: 6px 22px; align-items: flex-end; border-bottom: 2.5px double #172b49; padding-bottom: 6px; margin-bottom: 4px; font-size: 10px; }
+.pf2 .p2head b { font-size: 13px; color: #172b49; }
+.pf2 .ln.mid { display: inline-block; min-width: 220px; }
+.pf2 table.pfee td, .pf2 table.pfee th { height: 30px; font-size: 11px; }
+.pf2 table.pfee tr.tot td { font-weight: 700; }
+.pf2 .sig.fee { margin-top: 60px; }

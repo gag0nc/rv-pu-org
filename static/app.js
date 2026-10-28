@@ -814,7 +814,6 @@
   async function renderUsers() {
     $topTitle.textContent = 'Users';
     $topActions.append(h('button', { class: 'btn', onclick: importModal }, icon('download', 15), 'Import from Excel'));
-    $topActions.append(h('button', { class: 'btn', onclick: sampleModal }, 'Sample data'));
     $topActions.append(h('button', { class: 'btn', onclick: scanSettingsModal }, icon('scan', 15), 'Scan settings'));
     $topActions.append(h('button', { class: 'btn primary', onclick: addUserModal }, '+ Add user'));
     const users = await api('/api/users');
@@ -929,7 +928,8 @@
     d.siblings = Array.from(root.querySelectorAll('.sibrow')).map((row) => ({
       name: (row.querySelector('[data-sib=name]').value || '').trim(),
       class: (row.querySelector('[data-sib=class]').value || '').trim(),
-    })).filter((x) => x.name || x.class);
+      school: (row.querySelector('[data-sib=school]').value || '').trim(),
+    })).filter((x) => x.name || x.class || x.school);
     if (!d.source.includes('Telecalling')) d.telecaller = '';
     return d;
   }
@@ -1045,15 +1045,16 @@
     const sibAdd = h('button', { type: 'button', class: 'btn small ghost', disabled: !canEdit, onclick: () => { addSib({}); mark(); } }, '+ Add sibling');
     const sibBlock = h('div', { class: 'sibblock', 'data-flag': 'siblings' },
       h('div', { class: 'sibnote', role: 'note' }, icon('alert', 15),
-        h('span', {}, h('b', {}, 'Only brothers or sisters studying at Sri R.V. School or Sri R.V. PU College right now. '),
-          'Do not enter siblings studying at other schools or colleges, former students, cousins, relatives or friends.')),
+        h('span', {}, 'Do you have a younger brother or sister who is studying in school now? Write their name, class and school. It can be any school.')),
       sibRows, sibAdd);
     function addSib(s) {
       if (sibRows.children.length >= maxSib) return;
       const n = h('input', { type: 'text', 'data-sib': 'name', value: s.name || '', placeholder: 'Sibling name', maxlength: 100, disabled: !canEdit, 'aria-label': 'Sibling name',
         oninput: (e) => { const p = e.target.selectionStart; e.target.value = e.target.value.toUpperCase(); e.target.setSelectionRange(p, p); mark(); } });
-      const c = h('input', { type: 'text', 'data-sib': 'class', value: s.class || '', placeholder: 'Class (e.g. 8th, II PUC)', maxlength: 30, disabled: !canEdit, 'aria-label': 'Sibling class', list: 'sib-classes', oninput: mark });
-      const row = h('div', { class: 'sibrow' }, n, c,
+      const c = h('input', { type: 'text', 'data-sib': 'class', value: s.class || '', placeholder: 'Class (e.g. 8th)', maxlength: 30, disabled: !canEdit, 'aria-label': 'Sibling class', list: 'sib-classes', oninput: mark });
+      const sc = h('input', { type: 'text', 'data-sib': 'school', value: s.school || '', placeholder: 'School name', maxlength: 120, disabled: !canEdit, 'aria-label': 'Sibling school',
+        oninput: (e) => { const p = e.target.selectionStart; e.target.value = e.target.value.toUpperCase(); e.target.setSelectionRange(p, p); mark(); } });
+      const row = h('div', { class: 'sibrow' }, n, c, sc,
         canEdit ? h('button', { type: 'button', class: 'iconbtn small', 'aria-label': 'Remove sibling', title: 'Remove', onclick: () => { row.remove(); mark(); syncSib(); } }, '×') : null);
       sibRows.append(row);
       syncSib();
@@ -1062,7 +1063,7 @@
     (rec.siblings || []).forEach(addSib);
     if (!(rec.siblings || []).length && canEdit) addSib({});
     if (!canEdit && !(rec.siblings || []).length) sibRows.append(h('div', { class: 'muted' }, 'None entered'));
-    const sibClasses = h('datalist', { id: 'sib-classes' }, ['LKG', 'UKG', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH', 'I PUC', 'II PUC'].map((x) => h('option', { value: x })));
+    const sibClasses = h('datalist', { id: 'sib-classes' }, ['LKG', 'UKG', '1ST', '2ND', '3RD', '4TH', '5TH', '6TH', '7TH', '8TH', '9TH', '10TH'].map((x) => h('option', { value: x })));
 
     // Telecalling: who made the call. Shown only while Telecalling is ticked.
     const callerList = h('datalist', { id: 'tele-callers' }, state.staff.map((n) => h('option', { value: up(n) })));
@@ -1075,6 +1076,19 @@
       const on = !!(dr.el || form).querySelector('[name=source][value="Telecalling"]:checked');
       callerField.hidden = !on;
     };
+
+    const feeTotal = h('div', { class: 'feetotal' }, '\u2014');
+    const feeIn = (name) => text(name, { type: 'number', mode: 'decimal', ph: '0', label: name, after: () => updFee() });
+    function updFee() {
+      const root = dr.el || form;
+      let t = 0, any = false;
+      ['fee_tuition', 'fee_books', 'fee_uniform', 'fee_bus', 'fee_hostel'].forEach((n) => {
+        const el = root.querySelector(`[name=${n}]`);
+        const v = el ? parseFloat(el.value) : NaN;
+        if (v >= 0) { t += v; any = true; }
+      });
+      feeTotal.textContent = any ? '\u20b9 ' + t.toLocaleString('en-IN') : '\u2014';
+    }
 
     const meta = rec.lead_meta;
     const CH = { popup: 'Website pop-up form', hero: 'Website home page form', 'enquiry-page': 'Website enquiry page', brochure: 'Brochure request', callback: 'Call-back request', visit: 'Campus visit request', exit: 'Website exit offer', whatsapp: 'WhatsApp button', footer: 'Website footer form' };
@@ -1105,7 +1119,7 @@
         h('div', { class: 'tscroll marks-wrap' }, h('table', { class: 'marks', style: 'margin-top:14px' },
           h('thead', {}, h('tr', {}, ['Academic milestone', 'Marks obtained', 'Total', 'Percentage', 'Grade'].map((x) => h('th', {}, x)))),
           h('tbody', {}, markRow('9th Standard Final', 'm9'), markRow('10th Standard Pre-Board', 'm10pre'), markRow('10th Standard Board Exam', 'm10b')))),
-        h('div', { class: 'fw', style: 'margin-top:16px' }, h('label', { class: 'fld' }, 'Siblings currently studying at Sri R.V. School / PU College (name and class)'), sibBlock, sibClasses)),
+        h('div', { class: 'fw', style: 'margin-top:16px' }, h('label', { class: 'fld' }, 'Younger brothers or sisters studying in school (name, class, school)'), sibBlock, sibClasses)),
       section(3, 'Parents / guardian information',
         h('div', { class: 'grid2' },
           h('div', { class: 'stack' }, h('b', {}, 'Father / Guardian'),
@@ -1138,10 +1152,20 @@
           h('div', { class: 'grid2' }, field('Counselling completed on', text('counselled_on', { type: 'date' })), h('div', { class: 'hint' }, 'Leave empty if counselling is pending. It fills in automatically the first time the status moves out of New.')),
           field('Counsellor remarks & feedback notes', area('counsellor_remarks', 3)),
           can('management_remark') ? field('Management remark', area('principal_remarks', 3)) : null)),
+      section(8, 'Fee details',
+        h('div', { class: 'stack' },
+          h('div', { class: 'grid3' },
+            field('Finalised fee (\u20b9)', feeIn('fee_tuition')), field('Books (\u20b9)', feeIn('fee_books')), field('Uniform (\u20b9)', feeIn('fee_uniform')),
+            field('Bus fee (\u20b9)', feeIn('fee_bus')), field('Hostel fee, if any (\u20b9)', feeIn('fee_hostel')),
+            h('div', { class: 'fw' }, h('label', { class: 'fld' }, 'Total'), feeTotal)),
+          h('div', { class: 'grid2' },
+            field('Fee finalised by', text('fee_finalised_by', { upper: true, max: 100 })),
+            field('Fee finalised on', text('fee_finalised_on', { type: 'date' }))))),
       history.length ? h('div', { class: 'section' }, h('h3', {}, 'History'), h('div', { class: 'body history' },
         history.map((x) => h('div', {}, h('span', { class: 'at' }, fmtDateTime(x.at)), h('span', {}, up(x.username)), h('span', {}, up(x.action === 'created' ? 'Created — ' + (x.detail || '') : (x.detail || x.action.replace(/_/g, ' ')))))))) : null);
 
     form.addEventListener('change', (e) => { if (e.target.name === 'source') syncCaller(); });
+    setTimeout(updFee, 0);
     syncCaller();
     if (leadBox) form.prepend(leadBox);
 
@@ -1152,7 +1176,7 @@
       if (!d.student_name.trim()) { toast('Student name is required', true); return; }
       if (d.source.includes('Telecalling') && !d.telecaller.trim()) { toast('Telecalling is ticked. Enter who made the call.', true); callerInput.focus(); return; }
       const halfSib = d.siblings.find((x) => !x.name || !x.class);
-      if (halfSib) { toast('Enter both the name and the class for each sibling, or remove the row.', true); return; }
+      if (halfSib) { toast('Enter the name and class for each younger brother or sister, or remove the row.', true); return; }
       if (!isNew) d._v = rec.version != null ? rec.version : rec.updated_at;
       if (isNew && scan) d.via_scan = true;
       saveBtn.disabled = true;
@@ -1472,6 +1496,7 @@
         h('div', { class: 'pht' },
           h('h1', {}, cfg.print_title),
           h('div', { class: 'sub' }, '(Approved by the Department of Pre-University Education, Govt. of Karnataka)'),
+          h('div', { class: 'sub code' }, 'College Code: ' + (cfg.college_code || 'MM0283')),
           h('div', { class: 'sub' }, PRINT_ADDR)),
         h('div', { class: 'pno' }, h('div', {}, 'Form No.', h('span', { class: 'ln sm' }, blank ? '' : v(enqNo))), h('div', {}, 'Date', h('span', { class: 'ln sm' }, blank ? '' : fmtDate(d.enq_date))))),
       h('div', { class: 'pttl' }, 'STUDENT ENQUIRY FORM'),
@@ -1485,10 +1510,10 @@
       h('table', { class: 'pmarks' }, h('thead', {}, h('tr', {}, h('th', {}, 'Academic milestone'), h('th', {}, 'Marks obtained / Total'), h('th', {}, 'Percentage / Grade'))),
         h('tbody', {}, markRow('9th Standard Final', 'm9'), markRow('10th Standard Pre-Board', 'm10pre'), markRow('10th Standard Board Exam', 'm10b'))),
       h('div', { class: 'psib' },
-        h('div', { class: 'psibh' }, 'Sibling(s) currently studying at Sri R.V. School / Sri R.V. PU College'),
-        h('div', { class: 'psibn' }, 'Write ONLY brothers or sisters studying at Sri R.V. School or Sri R.V. PU College now. Do NOT write siblings at other schools or colleges, cousins, relatives or friends. Write NIL if none.'),
-        h('table', { class: 'pmarks' }, h('thead', {}, h('tr', {}, h('th', { style: 'width:8%' }, 'No.'), h('th', {}, 'Sibling name'), h('th', { style: 'width:30%' }, 'Class'))),
-          h('tbody', {}, sibRows.map((s, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, v(s.name)), h('td', {}, v(s.class))))))),
+        h('div', { class: 'psibh' }, 'Younger brothers or sisters'),
+        h('div', { class: 'psibn' }, 'Do you have a younger brother or sister who is studying in school now? Write their name, class and school. It can be any school. Write NIL if none.'),
+        h('table', { class: 'pmarks' }, h('thead', {}, h('tr', {}, h('th', { style: 'width:7%' }, 'No.'), h('th', { style: 'width:36%' }, 'Name'), h('th', { style: 'width:14%' }, 'Class'), h('th', {}, 'School'))),
+          h('tbody', {}, sibRows.map((s, i) => h('tr', {}, h('td', {}, i + 1), h('td', {}, v(s.name)), h('td', {}, v(s.class)), h('td', {}, v(s.school))))))),
       sec(3, 'Parents / Guardian Information'),
       h('table', { class: 'pmarks par' }, h('thead', {}, h('tr', {}, h('th', { style: 'width:22%' }, 'Details'), h('th', { style: 'width:39%' }, 'Father / Guardian'), h('th', { style: 'width:39%' }, 'Mother'))),
         h('tbody', {}, [['Name', 'name'], ['Occupation', 'occ'], ['Email ID', 'email'], ['Mobile number', 'mobile']].map(([k, f]) =>
@@ -1508,20 +1533,36 @@
       h('div', { class: 'grid2p' }, kv('Counselled by', blank ? '' : up(d.assigned_to)), kv('Counselling date', blank ? '' : fmtDate(d.counselled_on))),
       h('div', { class: 'kv tall' }, h('span', { class: 'k' }, 'Counsellor remarks & feedback notes'), h('div', { class: 'ln box' }, blank ? '' : v(d.counsellor_remarks))),
       h('div', { class: 'kv' }, h('span', { class: 'k' }, 'Management remark'), h('div', { class: 'ln box sm2' }, blank ? '' : v(d.principal_remarks))),
-      h('div', { class: 'sig' }, h('div', {}, 'Signature of Parent / Guardian'), h('div', {}, 'Signature of Student'), h('div', {}, 'Signature of Counsellor')));
+      h('div', { class: 'sig' }, h('div', {}, 'Signature of Parent / Guardian'), h('div', {}, 'Signature of Student'), h('div', {}, 'Signature of Counsellor')),
+      h('div', { class: 'ppage2' },
+        h('div', { class: 'p2head' }, h('b', {}, cfg.print_title), h('span', {}, 'College Code: ' + (cfg.college_code || 'MM0283')),
+          h('span', {}, 'Form No. ', h('span', { class: 'ln sm' }, blank ? '' : v(enqNo))), h('span', {}, 'Student ', h('span', { class: 'ln mid' }, blank ? '' : v(d.student_name)))),
+        sec(8, 'Fee Details'),
+        h('table', { class: 'pmarks pfee' }, h('thead', {}, h('tr', {}, h('th', {}, 'Item'), h('th', { style: 'width:38%' }, 'Amount (\u20b9)'))),
+          h('tbody', {}, [['Finalised fee', 'fee_tuition'], ['Books', 'fee_books'], ['Uniform', 'fee_uniform'], ['Bus fee', 'fee_bus'], ['Hostel fee (if applicable)', 'fee_hostel']].map(([k, f]) =>
+            h('tr', {}, h('td', { class: 'k' }, k), h('td', {}, blank || d[f] == null || d[f] === '' ? '' : Number(d[f]).toLocaleString('en-IN')))),
+            h('tr', { class: 'tot' }, h('td', { class: 'k' }, 'Total'), h('td', {}, blank ? '' : feeSum(d))))),
+        h('div', { class: 'grid2p' }, kv('Fee finalised by', blank ? '' : v(d.fee_finalised_by)), kv('Date', blank ? '' : fmtDate(d.fee_finalised_on))),
+        h('div', { class: 'sig fee' }, h('div', {}, 'Signature of Parent / Guardian'), h('div', {}, 'Signature (Fee finalised by)'), h('div', {}, 'Principal / Management'))));
     const area = document.getElementById('printArea');
     area.replaceChildren(pf);
     const imgs = Array.from(pf.querySelectorAll('img'));
     Promise.all(imgs.map((im) => (im.complete ? 1 : new Promise((r) => { im.onload = im.onerror = r; })))).then(() => window.print());
   }
 
+  function feeSum(d) {
+    let t = 0, any = false;
+    ['fee_tuition', 'fee_books', 'fee_uniform', 'fee_bus', 'fee_hostel'].forEach((f) => { const n = parseFloat(d[f]); if (n >= 0) { t += n; any = true; } });
+    return any ? t.toLocaleString('en-IN') : '';
+  }
+
   function blankFormModal() {
     const close = () => layerOff(bg);
     const pr = h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); printForm({}, '', true); } }, icon('print', 15), 'Print');
-    const dl = h('a', { class: 'btn', href: '/static/student-enquiry-form.pdf', download: 'Sri-RV-Student-Enquiry-Form.pdf' }, icon('download', 15), 'Download PDF');
+    const dl = h('a', { class: 'btn', href: '/static/student-enquiry-form.pdf', download: 'Sri-RV-PU-College-Student-Enquiry-Form.pdf' }, icon('download', 15), 'Download PDF');
     const panel = h('div', { class: 'modal' },
       h('h3', {}, 'Blank Student Enquiry Form'),
-      h('p', {}, 'A4, one page, with every section of the enquiry form including siblings at Sri R.V. and Telecalling. Families can fill it in by hand and you can scan it later.'),
+      h('p', {}, 'A4, two pages: the enquiry form (sections 1 to 7) and the Fee Details page (section 8). Families fill page 1 by hand; you can scan it later.'),
       h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Close'), dl, pr));
     const bg = h('div', { class: 'modal-bg', onmousedown: (e) => { if (e.target === bg) close(); } }, panel);
     layerOn(bg, panel, 'Blank Student Enquiry Form', close);
@@ -1558,27 +1599,6 @@
     const bg = h('div', { class: 'modal-bg' }, panel);
     layerOn(bg, panel, 'Import from Excel', close);
     pickBtn.focus();
-  }
-
-  async function sampleModal() {
-    let st;
-    try { st = await api('/api/sample'); } catch (e) { fail(e); return; }
-    const close = () => layerOff(bg);
-    const has = st.count > 0;
-    const act = h('button', { class: 'btn ' + (has ? 'danger' : 'primary'), type: 'button', onclick: async () => {
-      act.disabled = true;
-      try {
-        const r = await api('/api/sample', { method: has ? 'DELETE' : 'POST', body: {} });
-        close(); toast(has ? 'Sample entries removed' : `${r.count} sample entries added`); go('dashboard');
-      } catch (e) { fail(e); act.disabled = false; }
-    } }, has ? `Remove ${st.count} sample entries` : 'Load 48 sample entries');
-    const panel = h('div', { class: 'modal' }, h('h3', {}, 'Sample data'),
-      h('p', {}, has ? `${st.count} made-up sample entries are loaded so the dashboard can be shown. Remove them before you start entering real enquiries. Real entries are not touched.`
-        : 'Load 48 made-up enquiries (names, marks, statuses, follow-ups, website leads) to try the dashboard and train staff. They can be removed in one click later; real entries are never touched.'),
-      h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: close }, 'Close'), act));
-    const bg = h('div', { class: 'modal-bg' }, panel);
-    layerOn(bg, panel, 'Sample data', close);
-    act.focus();
   }
 
   document.addEventListener('click', () => document.querySelectorAll('.umenu').forEach((m) => { m.hidden = true; }));
