@@ -1493,29 +1493,27 @@ def export_xlsx():
     ws.title = "Enquiries"
     thin = Side(style="thin", color="D5D9E0")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    head_fill = PatternFill("solid", fgColor="1F2A44")
+    head_font = Font(bold=True, color="FF000000", name="Calibri", size=11)
+    row_font = Font(bold=False, color="FF000000", name="Calibri", size=11)
     for i, (name, _fn, width) in enumerate(cols, 1):
         c = ws.cell(row=1, column=i, value=name)
-        c.font = Font(bold=True, color="FFFFFF", name="Calibri", size=11)
-        c.fill = head_fill
+        c.font = head_font
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         c.border = border
         ws.column_dimensions[get_column_letter(i)].width = width
     ws.row_dimensions[1].height = 32
-    status_idx = [n for n, _f, _w in cols].index("Status") + 1
     styles = {}
     for ridx, r in enumerate(rows, 2):
         d = row_to_dict(r, role if inc_aadhaar else "viewer")
         for cidx, (_n, fn, _w) in enumerate(cols, 1):
             c = ws.cell(row=ridx, column=cidx, value=safe_cell(fn(d)))
-            key = (d["status"], cidx > 4, cidx == status_idx)
+            key = (d["status"], cidx > 4)
             template = styles.get(key)
             if template is None:
                 c.border = border
                 c.fill = PatternFill("solid", fgColor=STATUS_FILL.get(d["status"], "FFFFFF"))
+                c.font = row_font
                 c.alignment = Alignment(vertical="top", wrap_text=cidx > 4)
-                if cidx == status_idx:
-                    c.font = Font(bold=True)
                 styles[key] = copy(c._style)
             else:
                 c._style = copy(template)
@@ -1523,12 +1521,12 @@ def export_xlsx():
     ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{max(len(rows) + 1, 2)}"
     ws2 = wb.create_sheet("Summary")
     ws2["A1"] = COLLEGE_NAME + ", Kolar"
-    ws2["A1"].font = Font(bold=True, size=14)
+    ws2["A1"].font = Font(bold=True, color="FF000000", name="Calibri", size=14)
     ws2["A2"] = f"Admission enquiry summary — generated {now()}"
     ws2["A4"], ws2["B4"], ws2["C4"] = "Status", "Count", "Share"
     for c in ("A4", "B4", "C4"):
-        ws2[c].font = Font(bold=True, color="FFFFFF")
-        ws2[c].fill = head_fill
+        ws2[c].font = head_font
+        ws2[c].border = border
     counts = dict.fromkeys(STATUSES, 0)
     for r in rows:
         counts[r["status"]] += 1
