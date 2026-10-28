@@ -58,8 +58,9 @@ else:
 # India has one time zone and no daylight saving, so a fixed offset is exact.
 IST = timezone(timedelta(hours=5, minutes=30))
 
-COLLEGE_NAME = "Sri RV PU College"
-PRINT_TITLE = "SRI R. V. SCHOOL & P. U. COLLEGE, KOLAR"
+COLLEGE_NAME = "Sri R.V. PU College"
+PRINT_TITLE = "SRI R.V. P.U. COLLEGE, KOLAR"
+COLLEGE_CODE = "MM0283"
 
 STATUSES = [
     "New",
@@ -81,8 +82,8 @@ SYLLABI = ["State", "CBSE", "ICSE", "Others"]
 CATEGORIES = ["GM", "SC", "ST", "Cat-1", "2A", "2B", "3A", "3B", "Others"]
 # Tick boxes printed on the paper form, in paper order. "Website" is added automatically
 # to enquiries that come from the college website; it is not printed on the paper form.
-PAPER_SOURCES = ["Banners", "News", "TV Ads", "Student", "Staff", "Social Media", "Telecalling", "Others"]
-SOURCES = PAPER_SOURCES[:-1] + ["Website", "Others"]
+PAPER_SOURCES = ["Banners", "News", "TV Ads", "Student", "Staff", "Social Media", "Telecalling", "Website", "Others"]
+SOURCES = list(PAPER_SOURCES)
 TELECALLING = "Telecalling"
 ROLES = ["admin", "counsellor", "viewer"]
 MAX_SIBLINGS = 4
@@ -94,11 +95,12 @@ TEXT_FIELDS = [
     "mother_name", "mother_occ", "mother_email", "mother_mobile",
     "caste", "category", "aadhaar", "address", "town", "pincode",
     "ref_caller", "telecaller", "status", "parent_feedback", "counsellor_remarks", "principal_remarks",
-    "follow_up_date", "assigned_to", "counselled_on",
+    "follow_up_date", "assigned_to", "counselled_on", "fee_finalised_by", "fee_finalised_on",
 ]
 NUM_FIELDS = ["m9_obt", "m9_tot", "m10pre_obt", "m10pre_tot", "m10b_obt", "m10b_tot"]
+FEE_FIELDS = ["fee_tuition", "fee_books", "fee_uniform", "fee_bus", "fee_hostel"]
 LIST_FIELDS = {"coaching": COACHING, "source": SOURCES}
-ALL_FIELDS = TEXT_FIELDS + NUM_FIELDS + list(LIST_FIELDS) + ["siblings"]
+ALL_FIELDS = TEXT_FIELDS + NUM_FIELDS + FEE_FIELDS + list(LIST_FIELDS) + ["siblings"]
 
 FIELD_LABELS = {
     "enq_date": "Date", "stream": "Science combination", "coaching": "Coaching",
@@ -111,7 +113,9 @@ FIELD_LABELS = {
     "mother_occ": "Mother occupation", "mother_email": "Mother email", "mother_mobile": "Mother mobile",
     "caste": "Caste", "category": "Category", "aadhaar": "Aadhaar", "address": "Address", "town": "Town/City",
     "pincode": "Pincode", "source": "Source", "ref_caller": "Ref/Caller", "telecaller": "Telecalling done by",
-    "siblings": "Siblings studying at Sri R.V.", "status": "Status",
+    "siblings": "Younger siblings at school", "status": "Status",
+    "fee_tuition": "Finalised fee", "fee_books": "Books fee", "fee_uniform": "Uniform fee", "fee_bus": "Bus fee",
+    "fee_hostel": "Hostel fee", "fee_finalised_by": "Fee finalised by", "fee_finalised_on": "Fee finalised on",
     "parent_feedback": "Parent feedback", "counsellor_remarks": "Counsellor remarks",
     "principal_remarks": "Management remark", "follow_up_date": "Follow-up date", "assigned_to": "Assigned to",
     "counselled_on": "Counselling date",
@@ -139,11 +143,11 @@ MAX_FAILED = 5
 LOCK_MINUTES = 10
 IP_MAX_FAILED = 30
 IP_WINDOW = 600
-SESSION_HOURS = 8
+SESSION_HOURS = 12
 try:
-    REMEMBER_DAYS = min(60, max(0, int(os.environ.get("ADMISSIONS_REMEMBER_DAYS", "7"))))
+    REMEMBER_DAYS = min(60, max(0, int(os.environ.get("ADMISSIONS_REMEMBER_DAYS", "30"))))
 except ValueError:
-    REMEMBER_DAYS = 7
+    REMEMBER_DAYS = 30
 
 app = Flask(__name__, static_folder=None)
 MAX_BODY = 2 * 1024 * 1024
@@ -159,6 +163,14 @@ if ON_VERCEL or os.environ.get("ADMISSIONS_PROXY", "0") == "1":
 
 
 class Sessions(SecureCookieSessionInterface):
+    def open_session(self, app, request):
+        # The signing key must be loaded before the sign-in cookie is read, also on a freshly started server.
+        try:
+            ensure_ready()
+        except DBError:
+            pass
+        return super().open_session(app, request)
+
     def get_expiration_time(self, app, session):
         if not session.permanent or not session.get("remember"):
             return None
@@ -426,6 +438,8 @@ ENQ_COLUMNS = """
     follow_up_date TEXT,
     assigned_to TEXT,
     counselled_on TEXT,
+    fee_tuition {REAL}, fee_books {REAL}, fee_uniform {REAL}, fee_bus {REAL}, fee_hostel {REAL},
+    fee_finalised_by TEXT, fee_finalised_on TEXT,
     created_by TEXT,
     created_at TEXT NOT NULL,
     updated_by TEXT,
@@ -501,7 +515,9 @@ COMMON_INDEXES = [
 ]
 # Columns added after the first release. Older databases get them automatically.
 ADDED_COLUMNS = [("counselled_on", "TEXT"), ("telecaller", "TEXT"), ("siblings", "TEXT DEFAULT ''"), ("lead_meta", "TEXT"),
-                 ("version", "INTEGER NOT NULL DEFAULT 0")]
+                 ("version", "INTEGER NOT NULL DEFAULT 0"), ("fee_tuition", "REALX"), ("fee_books", "REALX"),
+                 ("fee_uniform", "REALX"), ("fee_bus", "REALX"), ("fee_hostel", "REALX"),
+                 ("fee_finalised_by", "TEXT"), ("fee_finalised_on", "TEXT")]
 
 
 def init_db():
@@ -512,7 +528,7 @@ def init_db():
         for stmt in PG_SCHEMA + COMMON_INDEXES:
             db.execute(stmt)
         for col, kind in ADDED_COLUMNS:
-            db.execute(f"ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS {col} {kind}")
+            db.execute(f"ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS {col} {kind.replace('REALX', 'DOUBLE PRECISION')}")
         db.commit()
     else:
         db.c.execute("PRAGMA journal_mode=WAL")
@@ -520,7 +536,7 @@ def init_db():
         existing = [r[1] for r in db.execute("PRAGMA table_info(enquiries)")]
         for col, kind in ADDED_COLUMNS:
             if col not in existing:
-                db.execute(f"ALTER TABLE enquiries ADD COLUMN {col} {kind}")
+                db.execute(f"ALTER TABLE enquiries ADD COLUMN {col} {kind.replace('REALX', 'REAL')}")
                 if col == "counselled_on":
                     db.execute("UPDATE enquiries SET counselled_on=enq_date WHERE status<>'New'")
     db.execute("UPDATE users SET role='viewer' WHERE role='principal'")
@@ -545,6 +561,16 @@ def init_db():
                     fd = os.open(os.path.join(DATA_DIR, "FIRST_LOGIN.txt"), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                     with os.fdopen(fd, "w") as f:
                         f.write(f"username: admin\npassword: {password}\n\nThis file is deleted automatically when you set your own password.\n")
+    # One-time switch to real use: set PRODUCTION_RESET to any new word and redeploy. All enquiries, the
+    # activity log and every user except "admin" are removed once. Settings and the scan key are kept.
+    wipe = os.environ.get("PRODUCTION_RESET", "").strip()
+    if wipe and get_setting("production_reset_applied", db) != wipe:
+        db.execute("DELETE FROM enquiries")
+        db.execute("DELETE FROM audit")
+        db.execute("DELETE FROM hits")
+        db.execute("DELETE FROM users WHERE LOWER(username)<>'admin'")
+        db.execute("INSERT INTO settings (k, v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+                   ("production_reset_applied", wipe))
     # Emergency admin recovery when the app is hosted (no reset_admin.py there): set ADMIN_RESET_PASSWORD
     # in the hosting settings and redeploy. It is applied once; remove it again afterwards.
     reset = os.environ.get("ADMIN_RESET_PASSWORD", "").strip()
@@ -686,7 +712,7 @@ def session_payload(u):
         "user": user_public(u),
         "csrf": session.get("csrf"),
         "config": {
-            "college": COLLEGE_NAME, "print_title": PRINT_TITLE, "statuses": STATUSES, "streams": STREAMS, "coaching": COACHING,
+            "college": COLLEGE_NAME, "print_title": PRINT_TITLE, "college_code": COLLEGE_CODE, "statuses": STATUSES, "streams": STREAMS, "coaching": COACHING,
             "syllabi": SYLLABI, "categories": CATEGORIES, "sources": SOURCES, "paper_sources": PAPER_SOURCES, "roles": ROLES,
             "max_siblings": MAX_SIBLINGS, "hosted": PG,
             "perms": {k: u["role"] in v for k, v in PERMS.items()},
@@ -820,7 +846,7 @@ def valid_date(v):
 
 
 def clean_siblings(value):
-    """Siblings currently studying at Sri R.V. School / PU College: list of {name, class}.
+    """Younger brothers or sisters now studying in any school: list of {name, class, school}.
     Returns (json_text, error)."""
     if value in (None, ""):
         return "", None
@@ -837,13 +863,14 @@ def clean_siblings(value):
             continue
         name = clean_text(item.get("name"), 100).upper()
         klass = clean_text(item.get("class"), 30).upper()
-        if not name and not klass:
+        school = clean_text(item.get("school"), 120).upper()
+        if not name and not klass and not school:
             continue
         if not name:
-            return "", "Enter the name of each sibling studying at Sri R.V."
+            return "", "Enter the name of each younger brother or sister."
         if not klass:
-            return "", f"Enter the class {name} is studying in at Sri R.V."
-        rows.append({"name": name, "class": klass})
+            return "", f"Enter the class {name} is studying in."
+        rows.append({"name": name, "class": klass, "school": school})
     if len(rows) > MAX_SIBLINGS:
         return "", f"Up to {MAX_SIBLINGS} siblings can be entered."
     return (json.dumps(rows, ensure_ascii=False) if rows else ""), None
@@ -858,7 +885,7 @@ def parse_siblings(text):
 
 
 def siblings_text(rows, sep="; "):
-    return sep.join(f"{x.get('name', '')} ({x.get('class', '')})" for x in rows)
+    return sep.join(f"{x.get('name', '')} ({', '.join(v for v in (x.get('class', ''), x.get('school', '')) if v)})" for x in rows)
 
 
 def validate_and_clean(data, partial=False, current=None):
@@ -878,11 +905,26 @@ def validate_and_clean(data, partial=False, current=None):
                 out[f] = to_num(data[f])
             except ValueError as e:
                 errors.append(str(e))
+    for f in FEE_FIELDS:
+        if f in data:
+            v = data[f]
+            if v is None or (isinstance(v, str) and not v.strip()):
+                out[f] = None
+                continue
+            try:
+                n = float(str(v).replace(",", "").strip())
+            except ValueError:
+                errors.append(f"{FIELD_LABELS[f]} must be an amount in rupees.")
+                continue
+            if not math.isfinite(n) or n < 0 or n > 10_000_000:
+                errors.append(f"{FIELD_LABELS[f]} is out of range.")
+                continue
+            out[f] = n
     for f, allowed in LIST_FIELDS.items():
         if f in data:
             vals = data[f] if isinstance(data[f], list) else str(data[f] or "").split(",")
             out[f] = ",".join(v for v in allowed if v in [str(x).strip() for x in vals])
-    for f in ("student_name", "prev_school", "father_name", "mother_name", "town", "telecaller"):
+    for f in ("student_name", "prev_school", "father_name", "mother_name", "town", "telecaller", "fee_finalised_by"):
         if out.get(f):
             out[f] = out[f].upper()
     # Telecalling must always say who made the call; the name is cleared when Telecalling is not ticked.
@@ -916,6 +958,8 @@ def validate_and_clean(data, partial=False, current=None):
         errors.append("Invalid follow-up date.")
     if out.get("counselled_on") and not valid_date(out["counselled_on"]):
         errors.append("Invalid counselling date.")
+    if out.get("fee_finalised_on") and not valid_date(out["fee_finalised_on"]):
+        errors.append("Invalid fee finalised date.")
     for f in ("father_mobile", "mother_mobile"):
         if out.get(f):
             digits = re.sub(r"[\s\-+]", "", out[f])
@@ -975,6 +1019,8 @@ def row_to_dict(r, role):
     except ValueError:
         d["lead_meta"] = None
     d["telecaller"] = d.get("telecaller") or ""
+    fees = [d.get(f) for f in FEE_FIELDS]
+    d["fee_total"] = sum(x for x in fees if x) if any(x is not None for x in fees) else None
     d["m9_pct"] = pct(d["m9_obt"], d["m9_tot"])
     d["m10pre_pct"] = pct(d["m10pre_obt"], d["m10pre_tot"])
     d["m10b_pct"] = pct(d["m10b_obt"], d["m10b_tot"])
@@ -1435,7 +1481,7 @@ def export_columns(include_aadhaar, include_management):
         ("Pincode", lambda d: d["pincode"], 10),
         ("Source", lambda d: source_text(d, sep="\n", caller_sep="\n   Called by: ", caller_end=""), 24),
         ("Ref / Caller", lambda d: d["ref_caller"], 16),
-        ("Siblings at Sri R.V. (name, class)", lambda d: siblings_text(d["siblings"], "\n"), 28),
+        ("Younger Siblings (name, class, school)", lambda d: siblings_text(d["siblings"], "\n"), 34),
         ("Status", lambda d: d["status"], 24),
         ("Parent Feedback", lambda d: d["parent_feedback"], 32),
         ("Counsellor Remarks", lambda d: d["counsellor_remarks"], 32),
@@ -1446,6 +1492,14 @@ def export_columns(include_aadhaar, include_management):
         ("Follow-up Date", lambda d: d["follow_up_date"], 12),
         ("Assigned To", lambda d: d["assigned_to"], 16),
         ("Counselling Date", lambda d: d["counselled_on"], 14),
+        ("Finalised Fee", lambda d: d["fee_tuition"], 12),
+        ("Books", lambda d: d["fee_books"], 10),
+        ("Uniform", lambda d: d["fee_uniform"], 10),
+        ("Bus Fee", lambda d: d["fee_bus"], 10),
+        ("Hostel Fee", lambda d: d["fee_hostel"], 10),
+        ("Total Fee", lambda d: d["fee_total"], 12),
+        ("Fee Finalised By", lambda d: d["fee_finalised_by"], 18),
+        ("Fee Finalised On", lambda d: d["fee_finalised_on"], 14),
         ("Website Enquiry", lambda d: lead_text(d.get("lead_meta")), 26),
         ("Last Updated", lambda d: d["updated_at"], 18),
     ]
@@ -1686,8 +1740,8 @@ SCAN_SCHEMA = {
         "source": {"type": "array", "items": {"type": "string", "enum": PAPER_SOURCES}},
         **{k: {"type": "string"} for k in SCAN_TEXT_KEYS},
         "siblings": {"type": "array", "items": {
-            "type": "object", "properties": {"name": {"type": "string"}, "class": {"type": "string"}},
-            "required": ["name", "class"], "additionalProperties": False}},
+            "type": "object", "properties": {"name": {"type": "string"}, "class": {"type": "string"}, "school": {"type": "string"}},
+            "required": ["name", "class", "school"], "additionalProperties": False}},
         "unclear_fields": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["is_enquiry_form", "stream", "coaching", "syllabus", "decision_status", "source", *SCAN_TEXT_KEYS, "siblings", "unclear_fields"],
@@ -1700,7 +1754,7 @@ SCAN_FIELD_MAP = {
     "office_use": ("counsellor_remarks",), "decision_status": ("status",), "counselled_by": ("assigned_to",),
     "counselling_date": ("counselled_on",),
 }
-SCAN_PROMPT = """This is a photograph of a filled-in "Student Enquiry Form" of SRI R. V. SCHOOL & P. U. COLLEGE, KOLAR (Karnataka, India). Read the handwritten entries and the ticked boxes and return them as JSON that matches the schema.
+SCAN_PROMPT = """This is a photograph of page 1 of a filled-in "Student Enquiry Form" of SRI R.V. P.U. COLLEGE, KOLAR (Karnataka, India), college code MM0283. Read the handwritten entries and the ticked boxes and return them as JSON that matches the schema.
 
 Rules:
 - Report only what is actually written or ticked. Never guess and never complete digits you cannot see. A blank entry is an empty string, and an unticked group is an empty list.
@@ -1711,8 +1765,9 @@ Rules:
 - In the marks table write the "Marks Obtained / Total" cell as obtained/total, for example 552/625. Copy the "Percentage / Grade" cell exactly as written into the matching *_result field.
 - "Town / City & Pincode" is one line on the form. Put the town in town and the six-digit pincode in pincode.
 - "House No / Street / Area" is the address. Join its lines with a comma.
-- Source of Information tick boxes are Banners, News, TV Ads, Student, Staff, Social Media, Telecalling and Others. Next to Telecalling there is a "Called by" line with the name of the staff member who made the telephone call: put that name in telecaller. Ref/Caller is a separate written line: put it in ref_caller.
-- "Siblings currently studying at Sri R.V. School / PU College" is a small table of Name and Class rows. Return one item per filled row with name and class exactly as written (class may be written like 8th, IX, I PUC, 2nd PUC). Leave the list empty when the rows are blank, crossed out or say NIL / NA / NONE.
+- Source of Information tick boxes are Banners, News, TV Ads, Student, Staff, Social Media, Telecalling, Website and Others. Next to Telecalling there is a "Called by" line with the name of the staff member who made the telephone call: put that name in telecaller. Ref/Caller is a separate written line: put it in ref_caller.
+- "Younger brothers or sisters studying in any school" is a small table of Name, Class and School rows. Return one item per filled row with name, class and school exactly as written (class may be written like 8th, IX, UKG). Leave the list empty when the rows are blank, crossed out or say NIL / NA / NONE.
+- Page 2 (Fee details) is not part of this photo; ignore it if visible.
 - "Decision status" has tick boxes Admission Confirmed, Under Discussion, Exploring Other Options and Not Interested: return the ticked one in decision_status, or an empty string.
 - In Office Use Only, "Counselled by" is a staff name (counselled_by) and "Counselling date" is a date (counselling_date). Put the counsellor remarks and the management remark text in office_use. Ignore printed labels, logos and the signature lines.
 - Category is a row of tick boxes (GM, SC, ST, Cat-1, 2A, 2B, 3A, 3B, Others): return the ticked one in category.
@@ -1936,9 +1991,10 @@ def normalise_scan(raw, role):
             continue
         name = scan_text(item, "name", 100).upper()
         klass = scan_text(item, "class", 30).upper()
+        school = scan_text(item, "school", 120).upper()
         if re.fullmatch(r"(NIL|NA|N/A|NONE|-+)?", name) and re.fullmatch(r"(NIL|NA|N/A|NONE|-+)?", klass):
             continue
-        sibs.append({"name": name, "class": klass})
+        sibs.append({"name": name, "class": klass, "school": school})
     if sibs:
         fields["siblings"] = sibs[:MAX_SIBLINGS]
         if any(not s["name"] or not s["class"] for s in sibs) or len(sibs) > MAX_SIBLINGS:
@@ -2251,7 +2307,7 @@ def public_pulse():
     origin = request.headers.get("Origin", "")
     if request.method == "OPTIONS":
         return public_json({}, origin, 204)
-    week = get_db().execute("SELECT COUNT(*) FROM enquiries WHERE enq_date>=? AND COALESCE(created_by,'')<>'sample'",
+    week = get_db().execute("SELECT COUNT(*) FROM enquiries WHERE enq_date>=?",
                             ((today_date() - timedelta(days=6)).isoformat(),)).fetchone()[0]
     resp = public_json({"week": week if week >= 10 else None}, origin)
     resp.headers["Cache-Control"] = "public, max-age=600"
@@ -2448,113 +2504,6 @@ def import_excel():
     log("import", detail=f"{added} entries imported from Excel ({', '.join(sheets)[:200]})")
     db.commit()
     return jsonify({"added": added, "duplicates": dup})
-
-
-# ---------------------------------------------------------------- sample data (admin)
-
-SAMPLE_BOYS = ["ARJUN", "KIRAN", "MOHAMMED AYAAN", "RAHUL", "SHREYAS", "VARUN", "NIKHIL", "ADITHYA", "SAI CHARAN", "MANOJ",
-               "PRAJWAL", "SUHAIL", "THARUN", "CHIRAG", "YASHWANTH", "HEMANTH", "DARSHAN", "ABHISHEK"]
-SAMPLE_GIRLS = ["ANANYA", "KAVYA", "SPOORTHI", "AYESHA", "BHAVANA", "DIVYA", "KEERTHANA", "SNEHA", "POOJA", "LIKHITHA",
-                "SAHANA", "MEGHANA", "NANDINI", "HARSHITHA", "TANVI", "SANJANA"]
-SAMPLE_SURNAMES = ["R", "K", "M", "S", "N", "GOWDA", "REDDY", "KHAN", "RAO", "NAIDU", "B", "V"]
-SAMPLE_FATHERS = ["RAMESH", "SURESH", "MANJUNATH", "NAGARAJ", "VENKATESH", "SRINIVAS", "MUNIRAJU", "ANWAR", "RAVI KUMAR",
-                  "PRAKASH", "GANESH", "CHANDRASHEKAR", "SHIVAKUMAR", "NARAYANASWAMY"]
-SAMPLE_MOTHERS = ["LAKSHMI", "SUMA", "GEETHA", "RESHMA", "MANJULA", "SHOBHA", "VANITHA", "ASHA", "PADMA", "NIRMALA"]
-SAMPLE_SCHOOLS = ["SRI R.V. SCHOOL, KOLAR", "KENDRIYA VIDYALAYA, KOLAR", "GOVT HIGH SCHOOL, MULBAGAL", "ST ANNE'S SCHOOL, KGF",
-                  "SARVODAYA SCHOOL, BANGARAPET", "VIDYA JYOTHI SCHOOL, MALUR", "NAVODAYA SCHOOL, SRINIVASPUR",
-                  "CHINMAYA VIDYALAYA, KOLAR", "JYOTHI ENGLISH SCHOOL, CHINTAMANI"]
-SAMPLE_TOWNS = [("KOLAR", "563101"), ("KOLAR", "563102"), ("MULBAGAL", "563131"), ("BANGARAPET", "563114"), ("MALUR", "563130"),
-                ("KGF", "563122"), ("SRINIVASPUR", "563135"), ("VEMAGAL", "563157"), ("CHINTAMANI", "563125")]
-SAMPLE_JOBS = ["Farmer", "Business", "Teacher", "Govt employee", "Engineer", "Doctor", "Shop owner", "Driver", "Contractor",
-               "Bank employee", "Homemaker"]
-
-
-def make_samples(count, staff):
-    import random
-
-    rnd = random.Random()
-    td = today_date()
-    statuses = ["New"] * 5 + ["Under Discussion"] * 6 + ["Admission Confirmed"] * 6 + ["Exploring Other Options"] * 3 + ["Not Interested"] * 2
-    sources = ["Student"] * 4 + ["Staff"] * 2 + ["Banners"] * 2 + ["Social Media"] * 3 + ["Telecalling"] * 3 + ["Website"] * 4 + ["News", "TV Ads", "Others"]
-    out = []
-    for i in range(count):
-        girl = rnd.random() < 0.48
-        first = rnd.choice(SAMPLE_GIRLS if girl else SAMPLE_BOYS)
-        father = rnd.choice(SAMPLE_FATHERS)
-        days = int(abs(rnd.gauss(0, 1)) * 28) if i else 0
-        d = td - timedelta(days=min(days, 330))
-        src = [rnd.choice(sources)]
-        if rnd.random() < 0.15:
-            src.append(rnd.choice(["Student", "Banners", "Social Media"]))
-        src = [s for s in SOURCES if s in src]
-        status = "New" if "Website" in src and rnd.random() < 0.6 else rnd.choice(statuses)
-        town, pin = rnd.choice(SAMPLE_TOWNS)
-        tot = 625
-        board = round(rnd.uniform(0.62, 0.98) * tot)
-        stream = rnd.choice(["PCMB", "PCMB", "PCMC"])
-        coach = ["NEET"] if stream == "PCMB" else ["JEE"]
-        if rnd.random() < 0.6:
-            coach.append("CET")
-        counsellor = rnd.choice(staff) if staff and status != "New" else (rnd.choice(staff) if staff and rnd.random() < 0.4 else "")
-        rec = {
-            "enq_date": d.isoformat(), "stream": stream, "coaching": ",".join(c for c in COACHING if c in coach),
-            "student_name": f"{first} {rnd.choice(SAMPLE_SURNAMES)}", "prev_school": rnd.choice(SAMPLE_SCHOOLS),
-            "syllabus": rnd.choice(["State", "State", "CBSE", "ICSE"]),
-            "m9_obt": round(rnd.uniform(0.6, 0.97) * 600), "m9_tot": 600.0,
-            "m10pre_obt": round(rnd.uniform(0.6, 0.97) * tot), "m10pre_tot": float(tot),
-            "father_name": f"{father} {rnd.choice(SAMPLE_SURNAMES)}", "father_occ": rnd.choice(SAMPLE_JOBS),
-            "father_mobile": f"9{rnd.randint(0, 9)}{rnd.randint(10000000, 99999999)}",
-            "mother_name": rnd.choice(SAMPLE_MOTHERS), "mother_occ": rnd.choice(["Homemaker", "Teacher", "Nurse", "Business"]),
-            "category": rnd.choice(CATEGORIES[:8]), "address": f"#{rnd.randint(1, 400)}, {rnd.randint(1, 12)}th Cross",
-            "town": town, "pincode": pin, "source": ",".join(src), "status": status, "assigned_to": counsellor,
-        }
-        if d <= td - timedelta(days=60) or rnd.random() < 0.3:
-            rec["m10b_obt"], rec["m10b_tot"] = float(board), float(tot)
-        if TELECALLING in src:
-            rec["telecaller"] = rnd.choice(staff) if staff else "OFFICE"
-        if "Website" in src:
-            ch = rnd.choice(["popup", "hero", "enquiry-page", "brochure", "callback", "visit"])
-            rec["lead_meta"] = json.dumps({"channel": ch, "page": "/", "submitted_at": f"{d.isoformat()} 1{rnd.randint(0, 9)}:{rnd.randint(10, 59)}:00"})
-        if rnd.random() < 0.18:
-            rec["siblings"] = json.dumps([{"name": f"{rnd.choice(SAMPLE_GIRLS + SAMPLE_BOYS)} {rnd.choice(SAMPLE_SURNAMES)}",
-                                          "class": rnd.choice(["7TH", "8TH", "9TH", "10TH", "II PUC"])}])
-        if status != "New":
-            rec["counselled_on"] = min(td, d + timedelta(days=rnd.randint(0, 3))).isoformat()
-        if status in OPEN_STATUSES:
-            rec["follow_up_date"] = (td + timedelta(days=rnd.randint(-3, 7))).isoformat()
-            if status == "Under Discussion":
-                rec["parent_feedback"] = rnd.choice(["Wants to discuss the fee with family.", "Comparing with a Bangalore college.",
-                                                     "Asked about hostel and transport.", "Will visit campus with the student on Saturday."])
-        if status == "Admission Confirmed":
-            rec["counsellor_remarks"] = "Fee paid at the office."
-        out.append(rec)
-    out.sort(key=lambda r: r["enq_date"])
-    return out
-
-
-@app.route("/api/sample", methods=["GET", "POST", "DELETE"])
-@auth({"admin"})
-def sample_data():
-    db = get_db()
-    if request.method == "POST":
-        if db.execute("SELECT COUNT(*) FROM enquiries WHERE created_by='sample'").fetchone()[0]:
-            return err("Sample entries are already loaded.")
-        staff = [r[0] for r in db.execute("SELECT full_name FROM users WHERE active=1 AND role='counsellor'")]
-        for rec in make_samples(48, staff):
-            insert_enquiry(rec, "sample")
-        log("sample_loaded", detail="48 sample entries")
-        db.commit()
-    elif request.method == "DELETE":
-        ids = [r[0] for r in db.execute("SELECT id FROM enquiries WHERE created_by='sample'")]
-        for i in range(0, len(ids), 200):
-            chunk = ids[i:i + 200]
-            marks = ",".join("?" * len(chunk))
-            db.execute(f"DELETE FROM audit WHERE enquiry_id IN ({marks})", chunk)
-            db.execute(f"DELETE FROM enquiries WHERE id IN ({marks})", chunk)
-        log("sample_removed", detail=f"{len(ids)} sample entries removed")
-        db.commit()
-    count = db.execute("SELECT COUNT(*) FROM enquiries WHERE created_by='sample'").fetchone()[0]
-    return jsonify({"count": count})
 
 
 @app.route("/healthz")
