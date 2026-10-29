@@ -795,3 +795,7 @@ a.btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: no
 .pf2 table.pfee td, .pf2 table.pfee th { height: 30px; font-size: 11px; }
 .pf2 table.pfee tr.tot td { font-weight: 700; }
 .pf2 .sig.fee { margin-top: 60px; }
+
+.tickcheck { outline: 2px dashed #d9a441; outline-offset: 6px; border-radius: 8px; }
+.tickcheck > label.fld::after, .status-opts.tickcheck::before { content: "Check ticks"; margin-left: 8px; font-size: 11.5px; font-weight: 600; color: #8f5f14; background: #fbf0d6; padding: 1px 7px; border-radius: 99px; text-transform: none; }
+.status-opts.tickcheck::before { display: block; width: max-content; margin: 0 0 6px; }

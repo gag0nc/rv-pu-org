@@ -1211,6 +1211,16 @@
     layerOn(el, panel, isNew ? 'New entry' : 'Enquiry ' + rec.enq_no, () => closeDrawer());
     Object.values(pcCells).forEach((c) => c._upd());
     if (scan) {
+      const ticks = ['stream', 'coaching', 'syllabus', 'category', 'source', 'status'];
+      ticks.forEach((n) => {
+        const el = form.querySelector(`[name="${n}"]`);
+        const box = el && (n === 'status' ? el.closest('.status-opts') : el.closest('.fw'));
+        if (!box || box.classList.contains('flag')) return;
+        box.classList.add('tickcheck');
+        const off = () => box.classList.remove('tickcheck');
+        box.addEventListener('change', off, { once: true });
+        box.addEventListener('click', off, { once: true });
+      });
       ['father_mobile', 'mother_mobile'].forEach((n) => {
         const m = form.querySelector(`[name=${n}]`);
         if (m && m.value.replace(/\D/g, '').length >= 10) checkDup({ target: m });
@@ -1228,8 +1238,8 @@
     let open = 0;
     const refresh = () => {
       sub.textContent = open
-        ? `Compare every field with the paper form before saving. ${open} ${open === 1 ? 'field needs' : 'fields need'} a closer look.`
-        : 'Compare every field with the paper form before saving.';
+        ? `Skim every field against the paper form and correct anything wrong before saving. ${open} ${open === 1 ? 'field needs' : 'fields need'} a closer look, and tick boxes are outlined to check.`
+        : 'Skim every field against the paper form and correct anything wrong before saving. Tick boxes are outlined to check.';
       chips.hidden = !open;
     };
     Object.entries(scan.flags || {}).forEach(([name, msg]) => {
@@ -1415,16 +1425,25 @@
     const err = h('div', { class: 'error-box', hidden: true, role: 'alert' });
     const good = h('div', { class: 'okbox', hidden: true, role: 'status' });
     const line = h('p', { class: 'scanline' });
-    const keyIn = h('input', { id: 'scan-key', type: 'password', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'none', placeholder: 'sk-ant-…', 'aria-describedby': 'scan-key-help' });
+    const keyIn = h('input', { id: 'scan-key', type: 'password', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'none', placeholder: 'Gemini key from Google AI Studio, or sk-ant-…', 'aria-describedby': 'scan-key-help' });
+    const modelSel = h('select', { id: 'scan-model', onchange: async () => {
+      modelSel.disabled = true;
+      try { st = await api('/api/scan/model', { method: 'PUT', body: { model: modelSel.value } }); show(good, 'Model changed to ' + modelSel.value + '.'); } catch (e) { if (e.message !== 'auth') show(err, e.message); }
+      modelSel.disabled = false; render();
+    } });
+    const modelRow = h('div', { hidden: true }, h('label', { class: 'fld', for: 'scan-model' }, 'Gemini model'), modelSel);
     const usage = h('p', { class: 'hint' });
     const save = h('button', { type: 'button', class: 'btn primary' }, 'Save key');
     const test = h('button', { type: 'button', class: 'btn' }, 'Test connection');
     const remove = h('button', { type: 'button', class: 'btn danger' }, 'Remove key');
     const show = (box, text) => { err.hidden = true; good.hidden = true; box.textContent = text; box.hidden = false; };
     const render = () => {
+      const prov = st.provider === 'gemini' ? 'Google Gemini' : st.provider === 'anthropic' ? 'Anthropic Claude' : '';
+      modelRow.hidden = st.provider !== 'gemini';
+      modelSel.replaceChildren(...(st.models || []).map((m) => h('option', { value: m.id, selected: m.id === st.model }, m.label)));
       line.textContent = !st.enabled ? 'Scanning is off. Paste a key below to turn it on.'
         : st.source === 'environment' ? `Scanning is on. It uses the key set on the server (ending ${st.hint}).`
-          : `Scanning is on. The saved key ends with ${st.hint}.`;
+          : `Scanning is on with ${prov}. The saved key ends with ${st.hint}.`;
       keyIn.disabled = save.disabled = st.source === 'environment';
       test.hidden = !st.enabled;
       remove.hidden = !st.can_remove;
@@ -1455,12 +1474,14 @@
     };
     const panel = h('div', { class: 'modal wide' },
       h('h3', {}, 'Scan settings'),
-      h('p', {}, 'Scanning lets staff photograph a filled Student Enquiry Form and have the details read into a new entry. It needs an Anthropic API key and an internet connection on the computer that runs this app.'),
+      h('p', {}, 'Scanning lets staff photograph a filled Student Enquiry Form and have the details read into a new entry. It needs a Google Gemini key (Google AI Studio) or an Anthropic key.'),
       h('div', { class: 'stack' }, err, good, line,
-        h('div', {}, h('label', { class: 'fld', for: 'scan-key' }, 'Anthropic API key'), keyIn,
-          h('p', { class: 'hint', id: 'scan-key-help' }, 'Create one at console.anthropic.com under API keys. It is kept on this computer, never shown again, and left out of backups.')),
+        h('div', {}, h('label', { class: 'fld', for: 'scan-key' }, 'API key'), keyIn,
+          h('p', { class: 'hint', id: 'scan-key-help' }, 'Gemini: aistudio.google.com, API keys. Anthropic: console.anthropic.com. The key is stored privately and never shown again.')),
+        modelRow,
         usage,
-        h('p', { class: 'hint' }, 'Each scan costs Anthropic a couple of rupees, billed to your account. The photo is sent to Anthropic to be read and is not kept by this app.')),
+        h('div', { class: 'warn' }, h('b', {}, 'Use a key with billing turned on for real forms. '), 'On Google\'s free tier, Google may use the photos to improve its products and people may review them. The forms contain Aadhaar and phone numbers, so use free keys only for testing with sample forms.'),
+        h('p', { class: 'hint' }, 'A scan costs well under a rupee with Gemini Flash, or a rupee or two with Claude. The photo is sent to the provider to be read and is not kept by this app.')),
       h('div', { class: 'actions wrap' }, remove, test, h('button', { type: 'button', class: 'btn', onclick: () => layerOff(bg) }, 'Close'), save));
     const bg = h('div', { class: 'modal-bg' }, panel);
     layerOn(bg, panel, 'Scan settings', () => layerOff(bg));
