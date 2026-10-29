@@ -1715,7 +1715,28 @@ def audit_log():
 
 SCAN_MODEL = os.environ.get("ADMISSIONS_SCAN_MODEL", "").strip() or "claude-sonnet-5-5"
 SCAN_API = (os.environ.get("ADMISSIONS_SCAN_URL", "").strip() or "https://api.anthropic.com").rstrip("/")
-SCAN_KEY_RE = re.compile(r"[A-Za-z0-9_\-]{20,300}")
+SCAN_KEY_RE = re.compile(r"[A-Za-z0-9_\-.]{20,300}")
+GEMINI_API = (os.environ.get("ADMISSIONS_GEMINI_URL", "").strip() or "https://generativelanguage.googleapis.com").rstrip("/")
+GEMINI_MODELS = [
+    ("gemini-3.6-flash", "Gemini 3.6 Flash: fast and accurate (recommended)"),
+    ("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite: fastest, more tick-box mistakes"),
+    ("gemini-3.8-flash", "Gemini 3.8 Flash: most careful, slow (30 s or more)"),
+]
+VERHOEFF_D = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 0, 6, 7, 8, 9, 5], [2, 3, 4, 0, 1, 7, 8, 9, 5, 6], [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+              [4, 0, 1, 2, 3, 9, 5, 6, 7, 8], [5, 9, 8, 7, 6, 0, 4, 3, 2, 1], [6, 5, 9, 8, 7, 1, 0, 4, 3, 2], [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+              [8, 7, 6, 5, 9, 3, 2, 1, 0, 4], [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]]
+VERHOEFF_P = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 5, 7, 6, 2, 8, 3, 0, 9, 4], [5, 8, 0, 3, 7, 9, 6, 1, 4, 2], [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+              [9, 4, 5, 3, 1, 2, 6, 8, 7, 0], [4, 2, 8, 6, 5, 7, 3, 9, 0, 1], [2, 7, 9, 3, 8, 0, 6, 4, 1, 5], [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]]
+
+
+def aadhaar_ok(num):
+    """Aadhaar numbers end in a Verhoeff check digit, so most single misread digits are caught."""
+    if not re.fullmatch(r"[2-9][0-9]{11}", num or ""):
+        return False
+    c = 0
+    for i, ch in enumerate(reversed(num)):
+        c = VERHOEFF_D[c][VERHOEFF_P[i % 8][int(ch)]]
+    return c == 0
 SCAN_TIMEOUT = 55 if ON_VERCEL else 100
 SCAN_PER_USER = 25
 SCAN_WINDOW = 600
@@ -1758,7 +1779,9 @@ SCAN_PROMPT = """This is a photograph of page 1 of a filled-in "Student Enquiry 
 
 Rules:
 - Report only what is actually written or ticked. Never guess and never complete digits you cannot see. A blank entry is an empty string, and an unticked group is an empty list.
-- A box is ticked when it carries a tick, cross, dot, shading or circle. If both boxes of a single-choice group look marked, choose the clearly stronger one, or leave it empty and list the field in unclear_fields.
+- Tick boxes: look at every small square one by one. A box counts as ticked when it carries any hand-drawn mark (tick, cross, dot, scribble, shading or a circle around the option), even if the mark is rough and spills over the box edge onto the printed word. An empty printed square is not ticked. If both boxes of a single-choice group look marked, choose the clearly stronger one, or leave it empty and list the field in unclear_fields.
+- The tick-box groups are: Science combination (PCMB, PCMC; one) -> stream. Competitive coaching (NEET, JEE, CET; any) -> coaching. Syllabus (State, CBSE, ICSE, Others; one) -> syllabus. Category (GM, SC, ST, Cat-1, 2A, 2B, 3A, 3B, Others; one) -> category. How did you know about us (Banners, News, TV Ads, Student, Staff, Social Media, Telecalling, Website, Others; any number, so check all nine boxes) -> source. Decision status (Admission Confirmed, Under Discussion, Exploring Other Options, Not Interested; one) -> decision_status.
+- Before answering, re-check each tick-box group against the photo, especially Category and every box of "How did you know about us".
 - Names, schools and places are written in capital letters. Return them as written.
 - Mobile numbers are Indian 10-digit numbers. Return digits only, without spaces. If a digit is unreadable, return only the digits you are sure of and list the field in unclear_fields.
 - Return dates as written, usually day/month/year, for example 15/10/2026.
@@ -1784,11 +1807,117 @@ class ScanError(Exception):
 
 
 def scan_key():
-    env = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    env = os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if env:
         return env, "environment"
     key = (get_setting("scan_key") or "").strip()
     return (key, "settings") if SCAN_KEY_RE.fullmatch(key) else ("", "")
+
+
+def scan_provider(key):
+    return "anthropic" if key.startswith("sk-ant") else "gemini"
+
+
+def scan_model(key):
+    if scan_provider(key) == "anthropic":
+        return SCAN_MODEL
+    chosen = (os.environ.get("ADMISSIONS_GEMINI_MODEL", "").strip() or get_setting("scan_model") or "").strip()
+    return chosen if chosen in [m for m, _l in GEMINI_MODELS] else GEMINI_MODELS[0][0]
+
+
+def gemini_call(method, path, key, payload=None, timeout=None):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(GEMINI_API + path, data=data, method=method, headers={
+        "x-goog-api-key": key, "content-type": "application/json", "user-agent": "admission-manager/1.0",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=timeout or SCAN_TIMEOUT) as resp:
+            status, raw = resp.status, resp.read(10_000_000)
+    except urllib.error.HTTPError as exc:
+        status, raw = exc.code, exc.read(1_000_000)
+    except TimeoutError:
+        raise ScanError("The scanning service took too long to answer. Please try again.", 504, "timeout") from None
+    except (urllib.error.URLError, OSError, ValueError):
+        raise ScanError("Could not reach the scanning service. Check that the computer running this app is online.", 502, "unreachable") from None
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        body = {}
+    return status, body if isinstance(body, dict) else {}
+
+
+def gemini_error(status, body, model):
+    info = body.get("error") if isinstance(body.get("error"), dict) else {}
+    detail = str(info.get("message", ""))[:400]
+    if status in (401, 403) or re.search(r"API key not valid|API_KEY_INVALID|permission", detail, re.I):
+        return "The scanning key was not accepted. Ask the administrator to enter a valid key in Scan settings.", "key"
+    if status == 404:
+        return f"The scanning model ({model}) is not available for this key.", "model"
+    if status == 429:
+        if re.search(r"quota|billing|limit: 0", detail, re.I):
+            return "The Google scanning quota for today is used up. Try again later, or the administrator can turn on billing for the key.", "credit"
+        return "The scanning service is busy or its usage limit was reached. Wait a minute and try again.", "rate"
+    if status >= 500:
+        return "The scanning service is temporarily unavailable. Try again in a minute.", "down"
+    if re.search(r"image|inline_data|mime", detail, re.I):
+        return "The scanning service could not process this photo. Take the photo again and retry.", "image"
+    return "The scanning service could not read this photo.", "rejected"
+
+
+def gemini_thinking(model):
+    if model.startswith("gemini-2.5"):
+        return [{"thinkingBudget": 0}]
+    return [{"thinkingLevel": "minimal"}, {"thinkingLevel": "low"}]
+
+
+def gemini_requests(data, media, model=""):
+    parts = [{"inline_data": {"mime_type": media, "data": base64.b64encode(data).decode()}}, {"text": SCAN_PROMPT}]
+    base = {"contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": SCAN_SCHEMA, "temperature": 0,
+                                 "mediaResolution": "MEDIA_RESOLUTION_HIGH"}}
+    for thinking in gemini_thinking(model):
+        yield dict(base, generationConfig=dict(base["generationConfig"], thinkingConfig=thinking))
+    yield base
+    keys = ", ".join(SCAN_SCHEMA["properties"])
+    plain = [parts[0], {"text": SCAN_PROMPT + "\n\nReturn one JSON object with exactly these keys: " + keys + "."}]
+    yield {"contents": [{"role": "user", "parts": plain}], "generationConfig": {"responseMimeType": "application/json", "temperature": 0}}
+
+
+def gemini_parse(body):
+    cands = body.get("candidates") if isinstance(body.get("candidates"), list) else []
+    if not cands:
+        if (body.get("promptFeedback") or {}).get("blockReason"):
+            raise ScanError("The scanning service declined to read this photo. Try a clearer photo of the form.", 422, "refused")
+        raise ScanError("The scanning service sent an empty answer. Please try again.", 502, "unreadable")
+    cand = cands[0] if isinstance(cands[0], dict) else {}
+    reason = cand.get("finishReason")
+    if reason == "MAX_TOKENS":
+        raise ScanError("The answer was cut off before it finished. Please try again.", 502, "truncated")
+    if reason in ("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"):
+        raise ScanError("The scanning service declined to read this photo. Try a clearer photo of the form.", 422, "refused")
+    parts = (cand.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and not p.get("thought")).strip()
+    return scan_parse({"content": [{"type": "text", "text": text}]})
+
+
+def run_scan_gemini(key, model, data, media):
+    variants = list(gemini_requests(data, media, model))
+    path = f"/v1beta/models/{urllib.parse.quote(model, safe='')}:generateContent"
+    for i, payload in enumerate(variants):
+        status, body = gemini_call("POST", path, key, payload)
+        if status in (500, 502, 503, 504):
+            time.sleep(2)
+            status, body = gemini_call("POST", path, key, payload)
+        if status == 200:
+            meta = body.get("usageMetadata") if isinstance(body.get("usageMetadata"), dict) else {}
+            usage = {"input_tokens": meta.get("promptTokenCount") or 0,
+                     "output_tokens": (meta.get("candidatesTokenCount") or 0) + (meta.get("thoughtsTokenCount") or 0)}
+            return gemini_parse(body), usage
+        message, tag = gemini_error(status, body, model)
+        if status == 400 and tag == "rejected" and i < len(variants) - 1:
+            continue
+        raise ScanError(message, 429 if status == 429 else 502, tag)
+    raise ScanError("The scanning service could not read this photo.", 502, "rejected")
 
 
 def scan_throttled(username):
@@ -1885,6 +2014,8 @@ def scan_parse(body):
 
 
 def run_scan(key, data, media):
+    if scan_provider(key) == "gemini":
+        return run_scan_gemini(key, scan_model(key), data, media)
     variants = list(scan_requests(data, media))
     for i, payload in enumerate(variants):
         status, body = anthropic_call("POST", "/v1/messages", key, payload)
@@ -1900,7 +2031,16 @@ def run_scan(key, data, media):
     raise ScanError("The scanning service could not read this photo.", 502, "rejected")
 
 
-def scan_probe(key):
+def scan_probe(key, model=None):
+    if scan_provider(key) == "gemini":
+        model = model or scan_model(key)
+        try:
+            status, body = gemini_call("GET", "/v1beta/models/" + urllib.parse.quote(model, safe=""), key, None, 25)
+        except ScanError as exc:
+            return False, str(exc)
+        if status == 200:
+            return True, f"Connected. The key works with {model}."
+        return False, gemini_error(status, body, model)[0]
     try:
         status, body = anthropic_call("GET", "/v1/models/" + urllib.parse.quote(SCAN_MODEL, safe=""), key, None, 25)
     except ScanError as exc:
@@ -2073,6 +2213,8 @@ def normalise_scan(raw, role):
         fields["aadhaar"] = aadhaar[:14]
         if len(aadhaar) != 12:
             flags["aadhaar"] = "An Aadhaar number has 12 digits. Please check it."
+        elif not aadhaar_ok(aadhaar):
+            flags["aadhaar"] = "This Aadhaar number does not pass the Aadhaar check, so a digit is probably misread. Please check it against the form."
     pin = re.sub(r"\D", "", pick("pincode"))
     if pin:
         fields["pincode"] = pin[:6]
@@ -2099,9 +2241,11 @@ def normalise_scan(raw, role):
 def scan_status_payload():
     key, source = scan_key()
     used = get_db().execute("SELECT COUNT(*) FROM audit WHERE action='scan' AND at>=?", (today()[:8] + "01",)).fetchone()[0]
-    out = {"enabled": bool(key), "model": SCAN_MODEL, "can_scan": g.user["role"] in PERMS["create"]}
+    provider = scan_provider(key) if key else None
+    out = {"enabled": bool(key), "model": scan_model(key) if key else "", "provider": provider, "can_scan": g.user["role"] in PERMS["create"]}
     if g.user["role"] == "admin":
-        out.update({"source": source or None, "hint": key[-4:] if key else "", "can_remove": source == "settings", "used_this_month": used})
+        out.update({"source": source or None, "hint": key[-4:] if key else "", "can_remove": source == "settings", "used_this_month": used,
+                    "models": [{"id": m, "label": l} for m, l in GEMINI_MODELS] if provider == "gemini" else []})
     return out
 
 
@@ -2153,12 +2297,29 @@ def scan_form():
 def scan_save_key():
     key = str(json_body().get("key", "")).strip()
     if not SCAN_KEY_RE.fullmatch(key):
-        return err("That does not look like an API key. Copy the whole key from the Anthropic console.")
+        return err("That does not look like an API key. Copy the whole key from Google AI Studio or the Anthropic console.")
     ok, message = scan_probe(key)
     if not ok:
         return err(message)
     set_setting("scan_key", key)
     log("scan_key_saved")
+    get_db().commit()
+    return jsonify(scan_status_payload())
+
+
+@app.route("/api/scan/model", methods=["PUT"])
+@auth({"admin"})
+def scan_set_model():
+    model = str(json_body().get("model", "")).strip()
+    if model not in [m for m, _l in GEMINI_MODELS]:
+        return err("Choose one of the listed models.")
+    key, _source = scan_key()
+    if key and scan_provider(key) == "gemini":
+        ok, message = scan_probe(key, model)
+        if not ok:
+            return err(message)
+    set_setting("scan_model", model)
+    log("scan_model", detail=model)
     get_db().commit()
     return jsonify(scan_status_payload())
 
